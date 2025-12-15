@@ -947,91 +947,9 @@ flowchart LR
 
 ---
 
-## 10. 📅 ROADMAP XÂY DỰNG LẠI
+## 10. ⚠️ RỦI RO & KHUYẾN NGHỊ
 
-### 10.1 Giai đoạn 1: MVP (4-6 tuần)
-
-```mermaid
-gantt
-    title Phase 1 - MVP
-    dateFormat  YYYY-MM-DD
-    section Setup
-    Project Setup & Architecture    :a1, 2024-01-01, 3d
-    Database Design & Setup         :a2, after a1, 2d
-    section Auth
-    Authentication Module           :b1, after a2, 5d
-    OAuth Integration               :b2, after b1, 2d
-    section Core
-    Organization CRUD               :c1, after b2, 3d
-    Event CRUD                      :c2, after c1, 4d
-    Ticket Generation               :c3, after c2, 4d
-    Email Delivery                  :c4, after c3, 3d
-    section Check-in
-    QR Scanner                      :d1, after c4, 4d
-    Check-in API                    :d2, after d1, 2d
-    section Frontend
-    Dashboard UI                    :e1, after c2, 7d
-    Scanner UI                      :e2, after d2, 3d
-    section Testing & Deploy
-    Integration Testing             :f1, after e2, 3d
-    Deployment                      :f2, after f1, 2d
-```
-
-**Deliverables:**
-- ✅ User authentication (email + Google)
-- ✅ Create/manage organizations
-- ✅ Create/manage events
-- ✅ Add guests (manual + Excel import)
-- ✅ Generate QR tickets
-- ✅ Send email with tickets
-- ✅ QR Scanner for check-in
-- ✅ Basic dashboard
-
-### 10.2 Giai đoạn 2: Enhanced Features (4-6 tuần)
-
-```mermaid
-gantt
-    title Phase 2 - Enhanced Features
-    dateFormat  YYYY-MM-DD
-    section VIP
-    VIP Seat Selection    :a1, 2024-02-15, 5d
-    Real-time Seat Lock   :a2, after a1, 3d
-    OTP Verification      :a3, after a2, 3d
-    section Analytics
-    Real-time Dashboard   :b1, after a3, 4d
-    Reports & Export      :b2, after b1, 3d
-    section Improvements
-    Offline Scanner Mode  :c1, after b2, 4d
-    Push Notifications    :c2, after c1, 3d
-    2FA Implementation    :c3, after c2, 3d
-    section Mobile
-    PWA Optimization      :d1, after c3, 4d
-```
-
-**Deliverables:**
-- ✅ VIP seat selection với real-time sync
-- ✅ OTP verification cho VIP guests
-- ✅ Real-time analytics dashboard
-- ✅ Offline scanner mode
-- ✅ 2FA cho accounts
-- ✅ PWA for mobile
-
-### 10.3 Giai đoạn 3: Scale & Optimize (4-6 tuần)
-
-**Focus areas:**
-- 🔧 Performance optimization
-- 🔧 Kubernetes deployment
-- 🔧 Auto-scaling setup
-- 🔧 Advanced analytics
-- 🔧 API rate limiting refinement
-- 🔧 Multi-language support
-- 🔧 White-label capabilities
-
----
-
-## 11. ⚠️ RỦI RO & KHUYẾN NGHỊ
-
-### 11.1 Rủi ro kỹ thuật
+### 10.1 Rủi ro kỹ thuật
 
 | ID | Rủi ro | Khả năng | Tác động | Mitigration |
 |----|--------|----------|----------|-------------|
@@ -1050,7 +968,7 @@ gantt
 | B3 | Timeline overrun | Medium | Medium | Buffer time, prioritization |
 | B4 | Data loss during migration | Low | Critical | Backup, validation checks |
 
-### 11.3 Khuyến nghị
+### 10.3 Khuyến nghị
 
 > [!IMPORTANT]
 > **Ưu tiên cao nhất: Bảo mật**
