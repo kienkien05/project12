@@ -1173,6 +1173,327 @@ S3_SECRET_KEY=
 
 ---
 
+## 13. 🎫 ĐỀ XUẤT CẢI TIẾN: QR TICKET GENERATION SYSTEM
+
+### 13.1 Tổng quan
+
+Hệ thống tạo vé QR đơn giản và hiệu quả:
+1. Tạo vé → Gắn UUID/ID duy nhất
+2. Check trùng lặp trước khi lưu
+3. Chuyển ID thành mã QR
+
+### 13.2 Ticket Code Generation
+
+#### Option 1: UUID v4 (Recommended)
+```typescript
+import { v4 as uuidv4 } from 'uuid';
+
+function generateTicketCode(): string {
+  return uuidv4(); // "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+#### Option 2: Database ObjectId
+```typescript
+// Dùng trực tiếp MongoDB ObjectId
+const ticketCode = ticket._id.toString(); // "507f1f77bcf86cd799439011"
+```
+
+#### Option 3: Custom Format (Short & Readable)
+```typescript
+import crypto from 'crypto';
+
+function generateTicketCode(prefix: string = 'TKT'): string {
+  const random = crypto.randomBytes(6).toString('hex').toUpperCase();
+  return `${prefix}-${random}`; // "TKT-A1B2C3D4E5F6"
+}
+```
+
+### 13.3 Duplicate Check Function
+
+```typescript
+// services/ticket.service.ts
+async function isTicketCodeUnique(code: string): Promise<boolean> {
+  const existing = await Ticket.findOne({ ticketCode: code }).lean();
+  return !existing;
+}
+
+async function generateUniqueTicketCode(): Promise<string> {
+  let code: string;
+  let isUnique = false;
+  let attempts = 0;
+  const MAX_ATTEMPTS = 5;
+  
+  while (!isUnique && attempts < MAX_ATTEMPTS) {
+    code = generateTicketCode();
+    isUnique = await isTicketCodeUnique(code);
+    attempts++;
+  }
+  
+  if (!isUnique) {
+    throw new Error('Failed to generate unique ticket code');
+  }
+  
+  return code;
+}
+```
+
+### 13.4 QR Code Generation
+
+```typescript
+import QRCode from 'qrcode';
+
+interface QROptions {
+  width?: number;
+  margin?: number;
+  color?: { dark: string; light: string };
+}
+
+async function generateQRCode(
+  ticketCode: string, 
+  options: QROptions = {}
+): Promise<string> {
+  const defaultOptions = {
+    width: 300,
+    margin: 2,
+    color: { dark: '#000000', light: '#FFFFFF' }
+  };
+  
+  const qrOptions = { ...defaultOptions, ...options };
+  
+  // Generate QR as Data URL (base64)
+  const qrDataUrl = await QRCode.toDataURL(ticketCode, qrOptions);
+  return qrDataUrl;
+}
+
+// Hoặc save file
+async function saveQRToFile(
+  ticketCode: string, 
+  filePath: string
+): Promise<void> {
+  await QRCode.toFile(filePath, ticketCode, { width: 300 });
+}
+```
+
+### 13.5 Complete Ticket Creation Flow
+
+```mermaid
+flowchart TD
+    A[Tạo Guest/Order] --> B[Generate Ticket Code]
+    B --> C{Check trùng?}
+    C -->|Trùng| B
+    C -->|Unique| D[Generate QR Code]
+    D --> E[Save Ticket to DB]
+    E --> F[Return Ticket + QR]
+    
+    style B fill:#f9f,stroke:#333
+    style D fill:#9ff,stroke:#333
+```
+
+### 13.6 Ticket Schema
+
+```typescript
+const ticketSchema = new Schema({
+  eventId: { type: ObjectId, ref: 'Event', required: true },
+  guestId: { type: ObjectId, ref: 'Guest', required: true },
+  
+  // Unique ticket identifier
+  ticketCode: { 
+    type: String, 
+    required: true, 
+    unique: true,  // DB-level unique constraint
+    index: true 
+  },
+  
+  // QR Data
+  qrCodeUrl: { type: String },      // Data URL hoặc file path
+  qrCodeData: { type: String },     // Raw QR content
+  
+  // Status
+  status: {
+    type: String,
+    enum: ['valid', 'used', 'cancelled'],
+    default: 'valid'
+  },
+  usedAt: { type: Date, default: null },
+  
+  // Metadata
+  ticketType: { type: String },
+  seatNumber: { type: String, default: null }
+}, { timestamps: true });
+
+// Index for fast lookup during scan
+ticketSchema.index({ ticketCode: 1 });
+ticketSchema.index({ eventId: 1, status: 1 });
+```
+
+### 13.7 API Endpoints
+
+```
+POST /api/v1/events/:eventId/tickets      # Create ticket(s)
+GET  /api/v1/tickets/:ticketCode          # Get ticket by code
+GET  /api/v1/tickets/:ticketCode/qr       # Get QR image
+POST /api/v1/tickets/:ticketCode/scan     # Scan/check-in
+```
+
+### 13.8 QR Scan Verification
+
+```typescript
+async function verifyTicket(ticketCode: string): Promise<VerifyResult> {
+  const ticket = await Ticket.findOne({ ticketCode })
+    .populate('guestId')
+    .populate('eventId');
+  
+  if (!ticket) {
+    return { valid: false, error: 'TICKET_NOT_FOUND' };
+  }
+  
+  if (ticket.status === 'used') {
+    return { 
+      valid: false, 
+      error: 'ALREADY_USED',
+      usedAt: ticket.usedAt 
+    };
+  }
+  
+  if (ticket.status === 'cancelled') {
+    return { valid: false, error: 'TICKET_CANCELLED' };
+  }
+  
+  return { 
+    valid: true, 
+    ticket,
+    guest: ticket.guestId,
+    event: ticket.eventId
+  };
+}
+```
+
+> [!TIP]
+> **Best Practice:** Sử dụng UUID v4 cho production vì collision probability cực thấp (~2^-122)
+
+---
+
+## 12. 🔐 ĐỀ XUẤT CẢI TIẾN: GUEST VERIFICATION SYSTEM
+
+### 12.1 Tổng quan
+
+Hệ thống xác thực Guest đảm bảo chỉ những người dùng đã xác minh mới có thể sử dụng dịch vụ, đồng thời ngăn chặn việc đăng ký/đặt dịch vụ nhiều lần.
+
+> [!IMPORTANT]
+> **Nguyên tắc cốt lõi:**
+> - Mỗi email/phone chỉ được sử dụng **MỘT LẦN** trong toàn hệ thống
+> - Guest chưa verified bị **CHẶN TOÀN BỘ** chức năng
+> - VIP Guest phải verify **CẢ email VÀ phone**
+
+### 12.2 Database Schema Updates
+
+#### Guest Schema (Enhanced)
+
+```typescript
+interface IGuest {
+  // Personal Info
+  fullName: string;
+  email: string;          // UNIQUE toàn hệ thống
+  phone: string;          // UNIQUE toàn hệ thống
+  
+  // Verification Status
+  verified: boolean;       // Master flag
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  emailVerifiedAt: Date | null;
+  phoneVerifiedAt: Date | null;
+  
+  // Guest Type
+  guestType: 'regular' | 'vip';
+}
+```
+
+#### Indexes & Constraints
+
+| Field | Index Type | Scope | Purpose |
+|-------|------------|-------|---------|
+| `email` | UNIQUE | Global | Prevent duplicate registrations |
+| `phone` | UNIQUE | Global | Prevent phone number reuse |
+| `{eventId, verified}` | Compound | Per event | Query optimization |
+
+### 12.3 Verification Flow
+
+```mermaid
+flowchart TD
+    A[Guest được thêm] --> B{Email/Phone unique?}
+    B -->|No| C[❌ Reject: Already exists]
+    B -->|Yes| D[Create với verified=false]
+    D --> E[Send Email OTP]
+    E --> F{Guest type?}
+    F -->|Regular| G[Verify Email only]
+    F -->|VIP| H[Verify Email + Phone]
+    G --> I[✅ verified = true]
+    H --> I
+    I --> J[Unlock all features]
+```
+
+### 12.4 OTP Configuration
+
+| Parameter | Email OTP | SMS OTP |
+|-----------|-----------|---------|
+| **Length** | 6 digits | 6 digits |
+| **Expiry** | 10 minutes | 5 minutes |
+| **Max Attempts** | 3 | 3 |
+| **Rate Limit** | 5/hour | 3/hour |
+| **Storage** | Hashed (SHA-256) | Hashed (SHA-256) |
+
+### 12.5 Security Mechanisms
+
+| Threat | Prevention |
+|--------|------------|
+| **OTP Brute Force** | Max 3 attempts → invalidate token |
+| **OTP Flooding** | Rate limiting per email/phone |
+| **Timing Attack** | Timing-safe comparison |
+| **Account Takeover** | Device fingerprinting (optional) |
+| **Disposable Emails** | Block known domains |
+| **Replay Attack** | One-time tokens, mark used |
+
+### 12.6 API Endpoints
+
+```
+POST /api/v1/verify/email/request    # Request email OTP
+POST /api/v1/verify/email/confirm    # Verify email OTP
+POST /api/v1/verify/phone/request    # Request SMS OTP  
+POST /api/v1/verify/phone/confirm    # Verify SMS OTP
+GET  /api/v1/verify/status/:guestId  # Get verification status
+POST /api/v1/verify/resend           # Resend OTP
+```
+
+### 12.7 Middleware Integration
+
+```typescript
+// Chặn tất cả unverified guests
+router.get('/seats/:eventId', requireVerified(), controller.getSeatMap);
+
+// VIP: Yêu cầu verify cả email + phone
+router.post('/seats/lock', requireVIPVerified(), controller.lockSeats);
+```
+
+### 12.8 Edge Cases
+
+| Case | Handling |
+|------|----------|
+| Email đã dùng ở event khác | Reject: "Email already registered" |
+| Guest cố verify lại | Return current verified status |
+| OTP expired khi đang nhập | Prompt resend, không trừ attempt |
+| Phone thay đổi sau verified | Require re-verification |
+
+> [!TIP]
+> **Chi tiết kỹ thuật đầy đủ:** Xem [implementation_plan.md](file:///C:/Users/admin/.gemini/antigravity/brain/92787526-c211-45a9-8eff-2e0fed3bdd01/implementation_plan.md)
+
+---
+
+## 📎 Phụ lục
+
+---
+
 > **Tài liệu này được tạo:** 2024-12-15  
-> **Phiên bản:** 1.0  
+> **Phiên bản:** 1.1  
+> **Cập nhật:** Thêm Guest Verification System  
 > **Tác giả:** BA Analysis by Claude
