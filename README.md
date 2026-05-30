@@ -29,8 +29,7 @@
 
 **Slide 1:** *(slide tiêu đề — tên nhóm, môn học, GV)*
 
-Kính thưa thầy và các bạn, em là **[TÊN]**, đại diện Nhóm 30. Hôm nay chúng em trình bày hệ thống **phân tích khách hàng 360 độ** — từ dữ liệu thô 150.000+ khách hàng đến quyết định offer tự động cho 3 sản phẩm: vay tiêu dùng, tiết kiệm có kỳ hạn, và thẻ tín dụng. Đây là bài toán **Next Best Financial Offer** — làm sao để ngân hàng biết chính xác nên giới thiệu sản phẩm gì cho từng khách hàng, vào đúng thời điểm, với rủi ro thấp nhất. Toàn bộ pipeline từ lúc nhận ID khách hàng đến lúc ra quyết định cuối cùng chạy dưới 1 giây.
-
+Kính thưa thầy và các bạn, em là **[TÊN]**, đại diện Nhóm 30. Hôm nay chúng em trình bày kết quả hệ thống **phân tích khách hàng**
 **Slide 2:** *(sơ đồ tổng quan — 4 khối chính)*
 
 Bố cục bài trình bày đi theo chính kiến trúc hệ thống mà chúng em đã xây dựng. Phần đầu là **9 thế hệ mô hình** (F0→F8) — cho thấy toàn bộ hành trình từ baseline đơn giản đến production. Sau đó đi sâu vào **3 Track xử lý song song**: Track C phân cụm hành vi khách hàng thành 8 persona, Track A phát hiện rủi ro gian lận, Track B dự đoán xác suất khách hàng quan tâm đến từng sản phẩm. Cả 3 track hội tụ về **Decision Layer** — nơi ra quyết định cuối cùng. Cuối cùng là **Live Demo** chạy trực tiếp trên notebook để thầy và các bạn thấy hệ thống hoạt động thực tế.
