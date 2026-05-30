@@ -162,3 +162,91 @@ Kính thưa thầy và các bạn, đó là toàn bộ hệ thống của Nhóm 
 | 8:00 | P7 | Tổng kết |
 | 9:00 | P7 | **BẮT ĐẦU DEMO** |
 | 14:00 | ALL | Kết thúc, cảm ơn |
+
+---
+
+## TỪ VIẾT TẮT & THUẬT NGỮ
+
+### Pipeline & Kiến trúc
+
+| Từ viết tắt | Đầy đủ | Giải thích |
+|---|---|---|
+| **F0–F8** | Generation 0–8 | 9 thế hệ mô hình từ baseline đến production |
+| **Track A** | Fraud Detection Track | Phân hệ phát hiện rủi ro / bất thường |
+| **Track B** | Product Recommendation Track | Phân hệ đề xuất sản phẩm tài chính (NBFO) |
+| **Track C** | Customer Persona Track | Phân hệ phân cụm hành vi khách hàng |
+| **NBFO** | Next Best Financial Offer | Bài toán đề xuất sản phẩm tài chính tiếp theo |
+| **P1–P7** | Presenter 1–7 | Người thuyết trình số 1 đến 7 |
+| **KH** | Khách hàng | Customer |
+
+### Thuật toán & Mô hình
+
+| Từ viết tắt | Đầy đủ | Giải thích |
+|---|---|---|
+| **PCA** | Principal Component Analysis | Phân tích thành phần chính — giảm chiều dữ liệu |
+| **KMeans** | K-Means Clustering | Phân cụm dựa trên khoảng cách tới tâm cụm |
+| **GMM** | Gaussian Mixture Model | Mô hình phân phối hỗn hợp Gaussian — soft clustering |
+| **KNN** | K-Nearest Neighbors | Phân cụm / phân loại dựa trên K láng giềng gần nhất |
+| **AE** | Autoencoder | Mạng neural tự mã hóa — học biểu diễn ẩn không giám sát |
+| **AE_K6/8/10** | Autoencoder + KMeans K=6/8/10 | Autoencoder giảm chiều → KMeans phân cụm embedding |
+| **IForest** | Isolation Forest | Thuật toán phát hiện bất thường dựa trên cây ngẫu nhiên |
+| **LOF** | Local Outlier Factor | Phát hiện bất thường dựa trên mật độ cục bộ |
+| **MLP** | Multi-Layer Perceptron | Mạng neural truyền thẳng nhiều lớp |
+| **HGB** | Histogram-based Gradient Boosting | Gradient Boosting dùng histogram — nhanh, nhẹ (sklearn) |
+| **LogReg** | Logistic Regression | Hồi quy logistic — mô hình tuyến tính cho classification |
+| **RF** | Random Forest | Rừng ngẫu nhiên — ensemble bagging của cây quyết định |
+| **ExtraTrees** | Extremely Randomized Trees | Biến thể RF với split ngẫu nhiên hơn |
+| **XGB / XGBoost** | Extreme Gradient Boosting | Gradient Boosting tối ưu — state-of-the-art tabular |
+| **LGBM** | LightGBM | Gradient Boosting của Microsoft — leaf-wise tree growth |
+| **BR** | Binary Relevance | Chiến lược multi-label: mỗi nhãn một classifier riêng |
+| **GRU** | Gated Recurrent Unit | Mạng hồi quy có cổng — nhẹ hơn LSTM |
+| **Transformer** | Transformer Encoder | Kiến trúc attention cho dữ liệu chuỗi |
+
+### Chỉ số đánh giá
+
+| Từ viết tắt | Đầy đủ | Giải thích |
+|---|---|---|
+| **AUC-PR** | Area Under Precision-Recall Curve | Đo chất lượng model trên dữ liệu mất cân bằng |
+| **ROC-AUC** | Area Under ROC Curve | Khả năng phân biệt positive/negative của model |
+| **Lift** | Lift (Top X%) | Tỷ lệ chuyển đổi ở top X% so với ngẫu nhiên |
+| **Precision@K** | Precision at Top K | Độ chính xác trên K dự đoán cao nhất |
+| **Silhouette** | Silhouette Score | Đo chất lượng phân cụm (−1 đến 1, càng cao càng tốt) |
+| **Davies-Bouldin** | Davies-Bouldin Index | Đo độ tương tự giữa các cụm (càng thấp càng tốt) |
+| **Calinski-Harabasz** | Variance Ratio Criterion | Tỷ số phương sai giữa các cụm / trong cụm |
+
+### Khái niệm lý thuyết
+
+| Thuật ngữ | Giải thích |
+|---|---|
+| **No Free Lunch** | Không tồn tại thuật toán tối ưu cho mọi bài toán (Wolpert & Macready, 1997) |
+| **Bias-Variance Decomposition** | Phân rã lỗi dự đoán thành bias (sai lệch hệ thống) + variance (độ nhạy với dữ liệu) |
+| **Diversity Principle** | Ensemble hiệu quả khi các mô hình thành viên sai khác nhau (Krogh & Vedelsby, 1995) |
+| **Stacking / Stacked Generalization** | Meta-learning: tầng base learner tạo prediction → tầng meta-learner tổng hợp (Wolpert, 1992) |
+| **Stack Loss** | Hiện tượng ensemble làm giảm hiệu năng do xung đột giữa các mô hình thành viên |
+| **Strict Pseudo-Eval** | Đánh giá giả lập nghiêm ngặt — dùng rule-based label + loại bỏ leakage |
+| **Percentile-Rank** | Chuẩn hóa score về phân vị để so sánh được giữa các phân phối khác nhau |
+| **Soft Clustering** | Phân cụm mềm — mỗi điểm thuộc về nhiều cụm với xác suất khác nhau |
+| **Persona Zoo** | Bộ sưu tập các biến thể persona từ nhiều thuật toán clustering khác nhau |
+| **Decision Layer** | Tầng ra quyết định cuối cùng — chọn offer dựa trên percentile-rank |
+| **Risk-Aware Policy Gate** | Rào chắn chính sách — dùng Track A để chặn offer nếu phát hiện rủi ro |
+| **xAI** | Explainable AI — tự động giải thích lý do model đưa ra quyết định |
+| **Joint Model** | Mô hình dùng chung cho cả 3 sản phẩm (thay vì model riêng từng sản phẩm) |
+
+### Sản phẩm tài chính
+
+| Từ viết tắt | Đầy đủ |
+|---|---|
+| **Loan** | Vay tiêu dùng cá nhân |
+| **TD** | Term Deposit — Tiết kiệm có kỳ hạn |
+| **Card** | Thẻ tín dụng |
+
+### Dữ liệu & Đặc trưng
+
+| Thuật ngữ | Giải thích |
+|---|---|
+| **CUSTOMER_NUMBER** | Mã định danh khách hàng |
+| **activity_hour_entropy** | Độ hỗn loạn giờ hoạt động — đo mức độ phân tán thời gian giao dịch |
+| **avg_ca_balance** | Số dư trung bình tài khoản thanh toán (Current Account) |
+| **P99** | Phân vị thứ 99 — nhóm khách hàng có giá trị tài sản cao nhất |
+| **Holdout** | Tập dữ liệu giữ lại độc lập, không dùng để train hay chọn model |
+| **Leakage** | Rò rỉ dữ liệu — thông tin từ test/holdout vô tình lọt vào training |
