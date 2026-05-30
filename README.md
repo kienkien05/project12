@@ -36,7 +36,7 @@ Bố cục bài trình bày đi theo chính kiến trúc hệ thống mà chúng
 
 **Slide 3:** *(timeline F0→F4 — baseline & exploration)*
 
-Hành trình bắt đầu từ **F0**: Isolation Forest trên dữ liệu thô. Đây là thuật toán phát hiện bất thường không giám sát — nó tìm ra những khách hàng "khác biệt" nhưng không cho biết khách hàng đó thuộc phân khúc nào, hành vi ra sao. **F1–F2**: chúng em thêm PCA giảm chiều dữ liệu từ hàng trăm đặc trưng xuống còn 8 chiều, rồi dùng KMeans phân cụm. Lần đầu tiên hệ thống có khái niệm "chân dung khách hàng" — mỗi khách hàng được gán vào một persona cụ thể. **F3**: tham vọng hơn, chúng em thử ensemble 3 model: MLP neural network, Isolation Forest, và Local Outlier Factor. Nhưng kết quả lại là bài học đắt giá nhất: **Stack Loss** — thêm LOF vào làm Precision@500 tụt từ 0.730 xuống 0.518, giảm 29%. **F4**: rút kinh nghiệm, chuyển từ KMeans sang GMM — Gaussian Mixture Model với soft clustering, cho phép một khách hàng thuộc nhiều cụm với xác suất khác nhau. Chất lượng phân cụm và fraud detection đều tăng rõ rệt.
+Hành trình bắt đầu từ **F0**: Huấn luyện mô hình Isolation Forest trên dữ liệu thô. **F1–F2**: chúng em thêm PCA giảm chiều dữ liệu từ hàng trăm đặc trưng xuống còn 8 chiều, rồi dùng KMeans phân cụm. Lần đầu tiên hệ thống có khái niệm "chân dung khách hàng" — mỗi khách hàng được gán vào một persona cụ thể. **F3**: tham vọng hơn, chúng em thử ensemble 3 model: MLP neural network, Isolation Forest, và Local Outlier Factor. **F4**: Chuyển từ KMeans sang GMM — Gaussian Mixture Model với soft clustering, cho phép một khách hàng thuộc nhiều cụm với xác suất khác nhau. Chất lượng phân cụm và fraud detection đều tăng rõ rệt.
 
 **Slide 4:** *(timeline F5→F7 — scaling & optimization)*
 
