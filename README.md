@@ -27,17 +27,23 @@
 
 > Người nói: **[TÊN]**
 
-**Slide 1:**
-Kính thưa thầy và các bạn, em là **[TÊN]**. Nhóm 30 xin trình bày hệ thống phân tích khách hàng 360 độ — từ raw data đến quyết định offer tự động.
+**Slide 1:** *(slide tiêu đề — tên nhóm, môn học, GV)*
+Kính thưa thầy và các bạn, em là **[TÊN]**, đại diện Nhóm 30. Hôm nay chúng em trình bày hệ thống **phân tích khách hàng 360 độ** — từ dữ liệu thô 150.000+ khách hàng đến quyết định offer tự động cho 3 sản phẩm: vay, tiết kiệm, thẻ tín dụng. Toàn bộ pipeline chạy dưới 1 giây cho mỗi khách hàng mới.
 
-**Slide 2:**
-Bố cục: 9 thế hệ mô hình → 3 Track xử lý → Decision Layer → Live Demo.
+**Slide 2:** *(sơ đồ tổng quan — 4 khối chính)*
+Bố cục bài trình bày đi theo kiến trúc hệ thống: **9 thế hệ mô hình** (F0→F8) cho thấy hành trình cải tiến → **3 Track xử lý song song** (C: phân cụm hành vi, A: phát hiện rủi ro, B: đề xuất sản phẩm) → **Decision Layer** ra quyết định cuối cùng → **Live Demo** chạy trực tiếp trên notebook.
 
-**Slide 3–5:** *(bấm nhanh 3 slide)*
-Hành trình F0→F8: Từ Isolation Forest baseline, qua PCA clustering, Persona Zoo 6 biến thể, Joint Model, đến Production F8. Mỗi thế hệ là một bài học — quan trọng nhất là **Stack Loss** khi thêm LOF làm giảm Precision 29%. *(sẽ nói kỹ ở Track A)*
+**Slide 3:** *(timeline F0→F4 — baseline & exploration)*
+Hành trình bắt đầu từ **F0**: Isolation Forest trên dữ liệu thô — phát hiện bất thường đơn giản nhưng không có persona. **F1–F2**: thêm PCA giảm chiều, KMeans phân cụm — lần đầu có chân dung khách hàng. **F3**: ensemble MLP + IForest + LOF — tham vọng kết hợp 3 model nhưng gặp bài học **Stack Loss**: thêm LOF làm Precision giảm 29%. **F4**: chuyển sang GMM soft clustering — chất lượng phân cụm tăng rõ rệt.
 
-**Slide 6:**
-Kiến trúc chốt F8: 3 track song song — **Track C** KMeans K=8 (Silhouette 0.68), **Track A** MLP+GMM (ROC-AUC 0.97), **Track B** XGBoost Joint BR (Lift 7.54x). Toàn bộ pipeline tự động dưới 1 giây.
+**Slide 4:** *(timeline F5→F7 — scaling & optimization)*
+**F5**: mở rộng Persona Zoo với 6 biến thể clustering (KMeans, GMM, KNN, AE_K6, AE_K8, AE_K10) — không còn phụ thuộc vào một thuật toán duy nhất. **F6**: thử Joint Model — một network chung cho cả 3 sản phẩm, và Time-Series Transformer/GRU — phát hiện Transformer thua XGBoost trên chuỗi ngắn. **F7**: bổ sung ANOVA chọn đặc trưng, Risk-Aware Policy Gate, hoàn thiện kiến trúc hybrid.
+
+**Slide 5:** *(mốc F8 — PRODUCTION READY)*
+**F8** là thế hệ chốt — tinh gọn từ tất cả bài học trước: giữ GMM cho Track A (vì soft clustering bắt fraud tốt nhất), giữ XGBoost cho Track B (vì thắng tuyệt đối Transformer/GRU), giữ KMeans K=8 cho Track C (Silhouette 0.68, cụm đồng đều), bỏ LOF (vì Stack Loss), bỏ Transformer (vì overfit chuỗi ngắn). Mỗi thế hệ không chỉ cải thiện metric — mà quan trọng hơn, **mỗi thế hệ trả lời một câu hỏi**: nên dùng model gì? nên kết hợp ra sao? nên bỏ cái gì?
+
+**Slide 6:** *(sơ đồ kiến trúc F8 — 3 track + Decision Layer)*
+Kiến trúc chốt F8 vận hành theo pipeline 3 track song song: **Track C** — KMeans K=8 trên PCA8, Silhouette 0.6825, output 8 persona giúp hiểu "khách hàng là ai". **Track A** — MLP + GMM, ROC-AUC 0.9746, output fraud flag để chặn offer rủi ro. **Track B** — XGBoost Joint BR cho Loan (AUC-PR 0.2515), XGBoost riêng cho TD và Card (Lift tới 7.54x), output propensity score cho từng sản phẩm. Cả 3 track hội tụ về Decision Layer: percentile-rank chuẩn hóa → chọn offer tốt nhất → Risk Gate kiểm tra lần cuối → xuất quyết định. **Pipeline hoàn toàn tự động, mỗi khách hàng mới xử lý dưới 1 giây.**
 
 > Em chuyển cho bạn **[TÊN P2]** trình bày Track C.
 
